@@ -1,0 +1,5 @@
+add_executable(lldt_unit_tests smoke_test.cpp)
+
+lldt_enable_project_warnings(lldt_unit_tests)
+
+add_test(NAME lldt_unit_tests COMMAND lldt_unit_tests)

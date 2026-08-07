@@ -1,0 +1,5 @@
+function(lldt_enable_project_warnings target)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic -Wshadow)
+    endif()
+endfunction()
