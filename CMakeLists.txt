@@ -8,11 +8,20 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(cmake/ProjectWarnings.cmake)
 
+add_library(lldt_common STATIC src/config.cpp)
+
+target_include_directories(lldt_common PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
+
+lldt_enable_project_warnings(lldt_common)
+
 add_executable(lldt_sender_kernel src/kernel/sender_main.cpp)
 add_executable(lldt_receiver_kernel src/kernel/receiver_main.cpp)
 
 lldt_enable_project_warnings(lldt_sender_kernel)
 lldt_enable_project_warnings(lldt_receiver_kernel)
+
+target_link_libraries(lldt_sender_kernel PRIVATE lldt_common)
+target_link_libraries(lldt_receiver_kernel PRIVATE lldt_common)
 
 add_library(lldt_harness_headers INTERFACE)
 
