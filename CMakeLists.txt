@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(cmake/ProjectWarnings.cmake)
 
-add_library(lldt_common STATIC src/config.cpp)
+add_library(lldt_common STATIC src/config.cpp src/sender_shm_reader.cpp)
 
 target_include_directories(lldt_common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
 
@@ -27,6 +27,7 @@ add_library(lldt_harness_headers INTERFACE)
 
 target_include_directories(lldt_harness_headers INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/harness/include/>)
 
+target_link_libraries(lldt_common PUBLIC lldt_harness_headers)
 target_link_libraries(lldt_sender_kernel PRIVATE lldt_harness_headers)
 target_link_libraries(lldt_receiver_kernel PRIVATE lldt_harness_headers)
 
