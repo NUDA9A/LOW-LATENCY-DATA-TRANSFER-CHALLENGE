@@ -25,9 +25,13 @@ namespace transport
         {
         case shm::Ring::FrameStatus::kOk:
             {
+                counters_.frames_read++;
+                counters_.bytes_read += read_len;
+
                 read_index_++;
                 if (read_len < sizeof(msg::Header))
                 {
+                    counters_.invalid_frames++;
                     return SenderShmReaderStatus::Invalid;
                 }
 
@@ -36,7 +40,30 @@ namespace transport
 
                 if (header.body_len < sizeof(msg::Header) || header.body_len != read_len)
                 {
+                    counters_.invalid_frames++;
                     return SenderShmReaderStatus::Invalid;
+                }
+
+                if (!has_prev_valid_)
+                {
+                    has_prev_valid_ = true;
+                    prev_valid_ = header.seq_id;
+                } else
+                {
+                    if (header.seq_id > prev_valid_)
+                    {
+                        const auto dist = header.seq_id - prev_valid_;
+                        if (dist > 1)
+                        {
+                            counters_.source_gap_events++;
+                            counters_.source_frames_missing += dist - 1;
+                        }
+
+                        prev_valid_ = header.seq_id;
+                    } else
+                    {
+                        counters_.source_gap_events++;
+                    }
                 }
 
                 frame_len_ = read_len;
@@ -44,8 +71,14 @@ namespace transport
                 return SenderShmReaderStatus::Ok;
             }
         case shm::Ring::FrameStatus::kEmpty:
+            counters_.empty_polls++;
             return SenderShmReaderStatus::Empty;
         case shm::Ring::FrameStatus::kLapped:
+            counters_.lapped_events++;
+            if (resume_at > read_index_)
+            {
+                counters_.lapped_frames_skipped += resume_at - read_index_;
+            }
             read_index_ = resume_at;
             return SenderShmReaderStatus::Lapped;
         }
@@ -60,5 +93,10 @@ namespace transport
     std::size_t SenderShmReader::get_frame_size() const noexcept
     {
         return frame_len_;
+    }
+
+    const SenderCounters& SenderShmReader::get_counters() const noexcept
+    {
+        return counters_;
     }
 }
