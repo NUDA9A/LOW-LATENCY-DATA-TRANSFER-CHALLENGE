@@ -10,7 +10,7 @@ include(cmake/ProjectWarnings.cmake)
 
 add_library(lldt_common STATIC src/config.cpp)
 
-target_include_directories(lldt_common PRIVATE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
+target_include_directories(lldt_common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
 
 lldt_enable_project_warnings(lldt_common)
 
