@@ -14,12 +14,11 @@ namespace transport
         read_index_ = ring_.live_edge();
     }
 
-    SenderShmReader::SenderShmReaderStatus SenderShmReader::try_read()
+    SenderReaderResult SenderShmReader::try_read()
     {
         std::uint64_t resume_at{};
         std::uint32_t read_len{};
 
-        frame_len_ = 0;
         const auto res = ring_.read(read_index_, buffer_.data(), &read_len, &resume_at);
         switch (res)
         {
@@ -32,7 +31,7 @@ namespace transport
                 if (read_len < sizeof(msg::Header))
                 {
                     counters_.invalid_frames++;
-                    return SenderShmReaderStatus::Invalid;
+                    return {SenderShmReaderStatus::Invalid, std::nullopt};
                 }
 
                 msg::Header header{};
@@ -41,8 +40,15 @@ namespace transport
                 if (header.body_len < sizeof(msg::Header) || header.body_len != read_len)
                 {
                     counters_.invalid_frames++;
-                    return SenderShmReaderStatus::Invalid;
+                    return {SenderShmReaderStatus::Invalid, std::nullopt};
                 }
+
+                ValidatedSourceFrameView frame_view{
+                    buffer_.data(),
+                    read_len,
+                    header.seq_id,
+                    false
+                };
 
                 if (!has_prev_valid_)
                 {
@@ -55,6 +61,7 @@ namespace transport
                         const auto dist = header.seq_id - prev_valid_;
                         if (dist > 1)
                         {
+                            frame_view.begins_after_source_gap = true;
                             counters_.source_gap_events++;
                             counters_.source_frames_missing += dist - 1;
                         }
@@ -62,17 +69,16 @@ namespace transport
                         prev_valid_ = header.seq_id;
                     } else
                     {
+                        frame_view.begins_after_source_gap = true;
                         counters_.source_gap_events++;
                     }
                 }
 
-                frame_len_ = read_len;
-
-                return SenderShmReaderStatus::Ok;
+                return {SenderShmReaderStatus::Ok, frame_view};
             }
         case shm::Ring::FrameStatus::kEmpty:
             counters_.empty_polls++;
-            return SenderShmReaderStatus::Empty;
+            return {SenderShmReaderStatus::Empty, std::nullopt};
         case shm::Ring::FrameStatus::kLapped:
             counters_.lapped_events++;
             if (resume_at > read_index_)
@@ -80,19 +86,9 @@ namespace transport
                 counters_.lapped_frames_skipped += resume_at - read_index_;
             }
             read_index_ = resume_at;
-            return SenderShmReaderStatus::Lapped;
+            return {SenderShmReaderStatus::Lapped, std::nullopt};
         }
         __builtin_unreachable();
-    }
-
-    const std::byte* SenderShmReader::get_frame_ptr() const noexcept
-    {
-        return buffer_.data();
-    }
-
-    std::size_t SenderShmReader::get_frame_size() const noexcept
-    {
-        return frame_len_;
     }
 
     const SenderCounters& SenderShmReader::get_counters() const noexcept

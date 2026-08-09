@@ -2,11 +2,13 @@
 
 #include <shm_segment.h>
 #include <shm_ring.h>
+#include <lldt/validated_source_frame_view.hpp>
 
 #include <cstdint>
 #include <cstddef>
 #include <array>
 #include <string>
+#include <optional>
 
 namespace transport
 {
@@ -22,26 +24,29 @@ namespace transport
         std::uint64_t source_frames_missing{};
     };
 
+    enum class SenderShmReaderStatus
+    {
+        Ok, Empty, Lapped, Invalid
+    };
+
+    struct SenderReaderResult
+    {
+        SenderShmReaderStatus status = SenderShmReaderStatus::Empty;
+        std::optional<ValidatedSourceFrameView> frame_view = std::nullopt;
+    };
+
     class SenderShmReader
     {
     public:
         SenderShmReader(const std::string& shm_name, std::uint32_t slots);
 
-        enum class SenderShmReaderStatus
-        {
-            Ok, Empty, Lapped, Invalid
-        };
-
-        SenderShmReaderStatus try_read();
-        std::size_t get_frame_size() const noexcept;
-        const std::byte* get_frame_ptr() const noexcept;
+        SenderReaderResult try_read();
         const SenderCounters& get_counters() const noexcept;
     private:
         shm::Segment segment_;
         shm::Ring ring_{};
         std::uint64_t read_index_{};
         std::uint64_t prev_valid_{};
-        std::uint32_t frame_len_{};
         bool has_prev_valid_{false};
         std::array<std::byte, shm::kFrameCap> buffer_{};
         SenderCounters counters_{};
