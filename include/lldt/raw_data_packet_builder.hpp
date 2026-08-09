@@ -2,9 +2,11 @@
 
 
 #include <lldt/validated_source_frame_view.hpp>
+#include <lldt/canonical_data_packet_view.hpp>
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 namespace transport
 {
@@ -16,7 +18,7 @@ namespace transport
     struct RawDataPacketBuildResult
     {
         RawDataPacketBuildStatus status = RawDataPacketBuildStatus::OutputTooSmall;
-        std::size_t packet_size{};
+        std::optional<CanonicalDataPacketView> canonical_data = std::nullopt;
     };
 
     class RawDataPacketBuilder

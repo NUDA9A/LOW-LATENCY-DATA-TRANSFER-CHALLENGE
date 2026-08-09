@@ -18,7 +18,7 @@ namespace transport
     {
         if (capacity < HEADER_SIZE + frame_view.frame_size)
         {
-            return {RawDataPacketBuildStatus::OutputTooSmall, 0};
+            return {RawDataPacketBuildStatus::OutputTooSmall, std::nullopt};
         }
 
         auto offset = writeSizeofTBE(output, MAGIC_LLDT);
@@ -40,7 +40,7 @@ namespace transport
         offset += writeSizeofTBE(output + offset, frame_view.frame_size); // payload_length
 
         constexpr std::uint16_t record_count = 1;
-        offset += writeSizeofTBE(output + offset, record_count); // amount of source frames into
+        offset += writeSizeofTBE(output + offset, record_count); // amount of source frames into payload of 1 Data-packet
 
         offset += writeSizeofTBE(output + offset, RAW_CODEC_ID);
 
@@ -49,6 +49,16 @@ namespace transport
 
         std::memcpy(output + offset, frame_view.data, frame_view.frame_size);
 
-        return {RawDataPacketBuildStatus::Ok, offset + frame_view.frame_size};
+        return {
+            RawDataPacketBuildStatus::Ok,
+            CanonicalDataPacketView{
+                output,
+                HEADER_SIZE + frame_view.frame_size,
+                session_id,
+                data_seq,
+                frame_view.source_seq_id,
+                record_count
+            }
+        };
     }
 }
