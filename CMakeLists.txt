@@ -8,7 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(cmake/ProjectWarnings.cmake)
 
-add_library(lldt_common STATIC src/config.cpp src/sender_shm_reader.cpp)
+add_library(lldt_common STATIC src/config.cpp src/sender_shm_reader.cpp src/raw_data_packet_builder.cpp)
 
 target_include_directories(lldt_common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
 
