@@ -14,7 +14,7 @@ target_include_directories(lldt_common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_
 
 lldt_enable_project_warnings(lldt_common)
 
-add_executable(lldt_sender_kernel src/kernel/sender_main.cpp)
+add_executable(lldt_sender_kernel src/kernel/sender_main.cpp src/kernel/kernel_udp_tx.cpp)
 add_executable(lldt_receiver_kernel src/kernel/receiver_main.cpp)
 
 lldt_enable_project_warnings(lldt_sender_kernel)
