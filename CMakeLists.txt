@@ -8,28 +8,24 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 include(cmake/ProjectWarnings.cmake)
 
-add_library(lldt_common STATIC src/config.cpp src/sender_shm_reader.cpp src/raw_data_packet_builder.cpp)
+add_library(lldt_sender_core STATIC src/config.cpp src/sender_shm_reader.cpp src/raw_data_packet_builder.cpp)
 
-target_include_directories(lldt_common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
+target_include_directories(lldt_sender_core PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
 
-lldt_enable_project_warnings(lldt_common)
+lldt_enable_project_warnings(lldt_sender_core)
 
-add_executable(lldt_sender_kernel src/kernel/sender_main.cpp src/kernel/kernel_udp_tx.cpp)
-add_executable(lldt_receiver_kernel src/kernel/receiver_main.cpp)
+add_executable(lldt_sender src/sender_main.cpp)
 
-lldt_enable_project_warnings(lldt_sender_kernel)
-lldt_enable_project_warnings(lldt_receiver_kernel)
+lldt_enable_project_warnings(lldt_sender)
 
-target_link_libraries(lldt_sender_kernel PRIVATE lldt_common)
-target_link_libraries(lldt_receiver_kernel PRIVATE lldt_common)
+target_link_libraries(lldt_sender PRIVATE lldt_sender_core)
 
 add_library(lldt_harness_headers INTERFACE)
 
 target_include_directories(lldt_harness_headers INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/harness/include/>)
 
-target_link_libraries(lldt_common PUBLIC lldt_harness_headers)
-target_link_libraries(lldt_sender_kernel PRIVATE lldt_harness_headers)
-target_link_libraries(lldt_receiver_kernel PRIVATE lldt_harness_headers)
+target_link_libraries(lldt_sender_core PUBLIC lldt_harness_headers)
+target_link_libraries(lldt_sender PRIVATE lldt_harness_headers)
 
 include(CTest)
 
