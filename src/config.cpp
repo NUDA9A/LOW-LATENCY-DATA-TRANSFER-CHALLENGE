@@ -131,7 +131,7 @@ static void parsePortArg(
 
 namespace transport
 {
-    EndpointConfig parse_endpoint_config(const int argc, const char* argv[])
+    EndpointConfig parse_endpoint_config(const int argc, const char* const argv[])
     {
         EndpointConfig config{};
 

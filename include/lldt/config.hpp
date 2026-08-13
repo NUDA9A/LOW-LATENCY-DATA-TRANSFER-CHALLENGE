@@ -36,5 +36,5 @@ namespace transport
         StartupError err = StartupError::OK;
     };
 
-    EndpointConfig parse_endpoint_config(int argc, const char* argv[]);
+    EndpointConfig parse_endpoint_config(int argc, const char* const argv[]);
 }
