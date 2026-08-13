@@ -30,7 +30,7 @@ int main(int argc, char* argv[])
 
     if (rte_eal_cleanup() != 0)
     {
-        std::fprintf(stderr, "ERROR: EAL cleanu\n");
+        std::fprintf(stderr, "ERROR: EAL cleanup fa\n");
         return 2;
     }
 
