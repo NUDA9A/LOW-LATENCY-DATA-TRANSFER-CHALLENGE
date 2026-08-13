@@ -7,14 +7,12 @@
 
 #include <cstdio>
 
-using SenderConfig = transport::EndpointConfig;
-
 namespace
 {
     int run_sender(const int argc, char* argv[])
     {
-        const SenderConfig config = transport::parse_endpoint_config(argc, argv);
-        if (config.err != transport::StartupError::OK)
+        const auto configOpt = transport::try_parse_endpoint_config(argc, argv);
+        if (!configOpt)
         {
             return 1;
         }
@@ -34,7 +32,7 @@ int main(int argc, char* argv[])
     int eal_argc{};
     if (eal_argc = rte_eal_init(argc, argv); eal_argc < 0)
     {
-        std::fprintf(stderr, "ERROR: EAL init failed: %s\n", rte_strerror(rte_errno));
+        std::fprintf(stderr, "ERROR: EAL init failed: %s.\n", rte_strerror(rte_errno));
         return 1;
     }
 
@@ -46,13 +44,13 @@ int main(int argc, char* argv[])
 
     if (sender_result)
     {
-        std::fprintf(stderr, "ERROR: Could not retrieve ENA-port info\n");
+        std::fprintf(stderr, "ERROR: Sender initialization failed.\n");
         return 1;
     }
 
     if (cleanup_result)
     {
-        std::fprintf(stderr, "ERROR: Could not cleanup EAL\n");
+        std::fprintf(stderr, "ERROR: Could not cleanup EAL.\n");
         return 1;
     }
 

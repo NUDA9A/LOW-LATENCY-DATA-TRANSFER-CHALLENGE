@@ -40,11 +40,11 @@ static bool equals_ignore_case(const std::string_view lhs, const std::string_vie
 }
 
 template <typename T>
-std::optional<T> parseNumFromString(const char* str, const std::size_t size, const std::string& name)
+std::optional<T> parseNumFromString(const char* str, const std::size_t size, const std::string& name, int base = 10)
 {
     T res{};
 
-    auto [ptr, ec] = std::from_chars(str, str + size, res);
+    auto [ptr, ec] = std::from_chars(str, str + size, res, base);
     if (ec != std::errc() || ptr != str + size)
     {
         std::fprintf(stderr, "[ERROR]: Invalid %s: %s.\n", name.c_str(), str);
@@ -54,84 +54,80 @@ std::optional<T> parseNumFromString(const char* str, const std::size_t size, con
     return res;
 }
 
-static void parseIpArg(
+static bool parseIpArg(
     bool& ipFlag,
-    transport::EndpointConfig& config,
     const std::string& flagName,
-    std::string& ipMember,
-    const std::function<std::string()>& next)
+    std::uint32_t& ipMember,
+    const std::function<std::optional<std::string>()>& next)
 {
     if (ipFlag)
     {
         std::fprintf(stderr, "[ERROR]: --%s flag already set.\n", flagName.c_str());
-        config.err = transport::StartupError::UnknownArgument;
-        return;
+        return false;
     }
 
-    const auto& ipArg = next();
-    if (config.err != transport::StartupError::OK)
+    const auto& ipArgOpt = next();
+    if (!ipArgOpt)
     {
-        return;
+        return false;
     }
 
     in_addr ip_binary{};
 
-    if (inet_pton(AF_INET, ipArg.c_str(), &ip_binary) != 1)
+    if (inet_pton(AF_INET, ipArgOpt->c_str(), &ip_binary) != 1)
     {
         std::fprintf(stderr, "[ERROR]: Invalid %s address.\n", flagName.c_str());
-        config.err = transport::StartupError::InvalidIpAddress;
-        return;
+        return false;
     }
 
-    ipMember = ipArg;
+    ipMember = ip_binary.s_addr;
 
     ipFlag = true;
+
+    return true;
 }
 
-static void parsePortArg(
+static bool parsePortArg(
     bool& portFlag,
-    transport::EndpointConfig& config,
     const std::string& flagName,
     std::uint16_t& portMember,
-    const std::function<std::string()>& next)
+    const std::function<std::optional<std::string>()>& next)
 {
     if (portFlag)
     {
         std::fprintf(stderr, "[ERROR]: --%s flag already set.\n", flagName.c_str());
-        config.err = transport::StartupError::UnknownArgument;
-        return;
+        return false;
     }
 
-    const auto& portArg = next();
-    if (config.err != transport::StartupError::OK)
+    const auto& portArgOpt = next();
+    if (!portArgOpt)
     {
-        return;
+        return false;
     }
 
-    config.err = transport::StartupError::InvalidPort;
-
-    const auto portOpt = parseNumFromString<std::uint16_t>(portArg.c_str(), strlen(portArg.c_str()), flagName.c_str());
+    const auto portOpt = parseNumFromString<std::uint16_t>(portArgOpt->c_str(), portArgOpt->size(), flagName.c_str());
     if (!portOpt)
     {
-        return;
+        return false;
     }
 
     const std::uint16_t port = *portOpt;
     if (port == 0)
     {
-        std::fprintf(stderr, "[ERROR]: %s value is zero: %s.\n", flagName.c_str(), portArg.c_str());
-        return;
+        std::fprintf(stderr, "[ERROR]: %s value is zero: %s.\n", flagName.c_str(), portArgOpt->c_str());
+        return false;
     }
 
     portMember = port;
-    config.err = transport::StartupError::OK;
 
     portFlag = true;
+
+    return true;
 }
 
 namespace transport
 {
-    EndpointConfig parse_endpoint_config(const int argc, const char* const argv[])
+    std::optional<EndpointConfig> try_parse_endpoint_config(const int argc, const char* const argv[])
     {
         EndpointConfig config{};
 
@@ -141,24 +137,27 @@ namespace transport
         bool peerIpFlag = false;
         bool dataPortFlag = false;
         bool controlPortFlag = false;
+        bool nextHopMacFlag = false;
         bool observabilityFlag = false;
 
         for (int i = 1; i < argc; ++i)
         {
             const auto arg = argv[i];
 
-            auto next = [&]() -> std::string {
+            auto next = [&]() -> std::optional<std::string> {
                 if (i + 1 >= argc || (strlen(argv[i + 1]) > 1 && argv[i + 1][0] == '-' && argv[i + 1][1] == '-')) {
-                    std::fprintf(stderr, "[ERROR]: Usage: ./executable"
-                                 "--shm <name>\n"
-                                 "--slots <N>\n"
-                                 "--local-ip <IPv4>\n"
-                                 "--peer-ip <IPv4>\n"
-                                 "--data-port <port>\n"
-                                 "--control-port <port>\n"
-                                 "--observability minimal|performance|diagnostic\n");
-                    config.err = StartupError::MissingValue;
-                    return "";
+                    std::fprintf(stderr, "[ERROR]: Usage: ./executable\n"
+                                "<EAL args>\n"
+                                "--\n"
+                                "--shm <name>\n"
+                                "--slots <N>\n"
+                                "--local-ip <IPv4>\n"
+                                "--peer-ip <IPv4>\n"
+                                "--data-port <port>\n"
+                                "--control-port <port>\n"
+                                "--next-hop-mac <xx:xx:xx:xx:xx:xx>\n"
+                                "--observability minimal|performance|diagnostic\n");
+                    return std::nullopt;
                 }
                 return argv[++i];
             };
@@ -168,14 +167,14 @@ namespace transport
                 if (shmFlag)
                 {
                     std::fprintf(stderr, "[ERROR]: --shm flag already set.\n");
-                    config.err = StartupError::UnknownArgument;
-                    return config;
+                    return std::nullopt;
                 }
-                config.shm_name = next();
-                if (config.err != StartupError::OK)
+                const auto shmNameOpt = next();
+                if (!shmNameOpt)
                 {
-                    return config;
+                    return std::nullopt;
                 }
+                config.shm_name = *shmNameOpt;
                 shmFlag = true;
             }
             else if (equals_ignore_case(arg, "--slots"))
@@ -183,65 +182,58 @@ namespace transport
                 if (slotsFlag)
                 {
                     std::fprintf(stderr, "[ERROR]: --slots flag already set.\n");
-                    config.err = StartupError::UnknownArgument;
-                    return config;
+                    return std::nullopt;
                 }
 
-                const auto& slotsArg = next();
-                if (config.err != StartupError::OK)
+                const auto slotsArgOpt = next();
+                if (!slotsArgOpt)
                 {
-                    return config;
+                    return std::nullopt;
                 }
 
-                config.err = StartupError::InvalidSlotsValue;
-
-                const auto slotsOpt = parseNumFromString<std::uint32_t>(slotsArg.c_str(), strlen(slotsArg.c_str()), "slots");
+                const auto slotsOpt = parseNumFromString<std::uint32_t>(slotsArgOpt->c_str(), slotsArgOpt->size(), "slots");
                 if (!slotsOpt)
                 {
-                    return config;
+                    return std::nullopt;
                 }
 
                 const std::uint32_t slots = *slotsOpt;
                 if (slots == 0 || ((slots - 1) & slots))
                 {
-                    std::fprintf(stderr, "[ERROR]: Slots value is zero or not power of 2: %s.\n", slotsArg.c_str());
-                    return config;
+                    std::fprintf(stderr, "[ERROR]: Slots value is zero or not power of 2: %s.\n", slotsArgOpt->c_str());
+                    return std::nullopt;
                 }
 
                 config.slots = slots;
-                config.err = StartupError::OK;
                 slotsFlag = true;
             }
             else if (equals_ignore_case(arg, "--local-ip"))
             {
-                parseIpArg(localIpFlag, config, "local-ip", config.local_ip, next);
-                if (config.err != StartupError::OK)
+                if (!parseIpArg(localIpFlag, "local-ip", config.local_ipv4_be, next))
                 {
-                    return config;
+                    return std::nullopt;
                 }
             }
             else if (equals_ignore_case(arg, "--peer-ip"))
             {
-                parseIpArg(peerIpFlag, config, "peer-ip", config.peer_ip, next);
-                if (config.err != StartupError::OK)
+                if (!parseIpArg(peerIpFlag, "peer-ip", config.peer_ipv4_be, next))
                 {
-                    return config;
+                    return std::nullopt;
                 }
+
             }
             else if (equals_ignore_case(arg, "--data-port"))
             {
-                parsePortArg(dataPortFlag, config, "data-port", config.data_port, next);
-                if (config.err != StartupError::OK)
+                if (!parsePortArg(dataPortFlag, "data-port", config.data_port, next))
                 {
-                    return config;
+                    return std::nullopt;
                 }
             }
             else if (equals_ignore_case(arg, "--control-port"))
             {
-                parsePortArg(controlPortFlag, config, "control-port", config.control_port, next);
-                if (config.err != StartupError::OK)
+                if (!parsePortArg(controlPortFlag, "control-port", config.control_port, next))
                 {
-                    return config;
+                    return std::nullopt;
                 }
             }
             else if (equals_ignore_case(arg, "--observability"))
@@ -249,63 +241,127 @@ namespace transport
                 if (observabilityFlag)
                 {
                     std::fprintf(stderr, "[ERROR]: --observability flag already set.\n");
-                    config.err = StartupError::UnknownArgument;
-                    return config;
+                    return std::nullopt;
                 }
 
-                const auto& observabilityArg = next();
-                if (config.err != StartupError::OK)
+                const auto observabilityArgOpt = next();
+                if (!observabilityArgOpt)
                 {
-                    return config;
+                    return std::nullopt;
                 }
 
-                if (equals_ignore_case(observabilityArg, "minimal", true))
+                if (equals_ignore_case(*observabilityArgOpt, "minimal", true))
                 {
                     config.observability = ObservabilityMode::Minimal;
                 }
-                else if (equals_ignore_case(observabilityArg, "performance", true))
+                else if (equals_ignore_case(*observabilityArgOpt, "performance", true))
                 {
                     config.observability = ObservabilityMode::Performance;
                 }
-                else if (equals_ignore_case(observabilityArg, "diagnostic", true))
+                else if (equals_ignore_case(*observabilityArgOpt, "diagnostic", true))
                 {
                     config.observability = ObservabilityMode::Diagnostic;
                 }
                 else
                 {
-                    std::fprintf(stderr, "[ERROR]: Invalid observability mode: %s.\n", observabilityArg.c_str());
-                    config.err = StartupError::InvalidObservabilityMode;
-                    return config;
+                    std::fprintf(stderr, "[ERROR]: Invalid observability mode: %s.\n", observabilityArgOpt->c_str());
+                    return std::nullopt;
                 }
 
                 observabilityFlag = true;
             }
+            else if (equals_ignore_case(arg, "--next-hop-mac"))
+            {
+                if (nextHopMacFlag)
+                {
+                    std::fprintf(stderr, "[ERROR]: --next-hop-mac flag already set.\n");
+                    return std::nullopt;
+                }
+
+                const auto nextHopMacArgOpt = next();
+                if (!nextHopMacArgOpt)
+                {
+                    return std::nullopt;
+                }
+
+                const auto& nextHopMac = *nextHopMacArgOpt;
+
+                if (nextHopMac.size() != 17) // 6 * 2 octets + 5 ':' = 17
+                {
+                    std::fprintf(stderr, "[ERROR]: Invalid next-hop-mac argument: %s.\n", nextHopMac.c_str());
+                    return std::nullopt;
+                }
+
+                std::size_t zeroOctetsCount = 0;
+                for (std::size_t octet_idx = 0; octet_idx < 6; ++octet_idx)
+                {
+                    if (octet_idx < 5 && nextHopMac[octet_idx * 3 + 2] != ':')
+                    {
+                        std::fprintf(stderr, "[ERROR]: Invalid next-hop-mac argument: %s.\n", nextHopMac.c_str());
+                        return std::nullopt;
+                    }
+
+                    const auto octetOpt = parseNumFromString<std::uint8_t>(
+                        nextHopMac.substr(octet_idx * 3, 2).c_str(),
+                        2,
+                        "next-hop-mac",
+                        16
+                    );
+
+                    if (!octetOpt)
+                    {
+                        return std::nullopt;
+                    }
+
+                    config.next_hop_mac[octet_idx] = *octetOpt;
+
+                    if (config.next_hop_mac[octet_idx] == 0)
+                    {
+                        zeroOctetsCount++;
+                    }
+                }
+
+                if (zeroOctetsCount == 6)
+                {
+                    std::fprintf(stderr, "[ERROR]: Zero MAC is not supported\n");
+                    return std::nullopt;
+                }
+
+                if ((config.next_hop_mac[0] & 0x01u) != 0)
+                {
+                    std::fprintf(stderr, "[ERROR]: Multicast MAC is not supported.\n");
+                    return std::nullopt;
+                }
+
+                nextHopMacFlag = true;
+            }
             else
             {
                 std::fprintf(stderr, "[ERROR]: Unknown argument: %s.\n", arg);
-                config.err = StartupError::UnknownArgument;
-                return config;
+                return std::nullopt;
             }
         }
 
-        if (!shmFlag || !slotsFlag || !localIpFlag || !peerIpFlag || !dataPortFlag || !controlPortFlag || !observabilityFlag)
+        if (!shmFlag || !slotsFlag || !localIpFlag || !peerIpFlag || !dataPortFlag || !controlPortFlag || !nextHopMacFlag || !observabilityFlag)
         {
-            std::fprintf(stderr, "[ERROR]: Usage: ./executable"
-                                 "--shm <name>\n"
-                                 "--slots <N>\n"
-                                 "--local-ip <IPv4>\n"
-                                 "--peer-ip <IPv4>\n"
-                                 "--data-port <port>\n"
-                                 "--control-port <port>\n"
-                                 "--observability minimal|performance|diagnostic\n");
-            config.err = StartupError::MissingValue;
-            return config;
+            std::fprintf(stderr, "[ERROR]: Usage: ./executable\n"
+                                "<EAL args>\n"
+                                "--\n"
+                                "--shm <name>\n"
+                                "--slots <N>\n"
+                                "--local-ip <IPv4>\n"
+                                "--peer-ip <IPv4>\n"
+                                "--data-port <port>\n"
+                                "--control-port <port>\n"
+                                "--next-hop-mac <xx:xx:xx:xx:xx:xx>\n"
+                                "--observability minimal|performance|diagnostic\n");
+            return std::nullopt;
         }
 
         if (config.data_port == config.control_port)
         {
             std::fprintf(stderr, "[ERROR]: Data-port == control-port.\n");
-            config.err = StartupError::InvalidPort;
+            return std::nullopt;
         }
 
         return config;
