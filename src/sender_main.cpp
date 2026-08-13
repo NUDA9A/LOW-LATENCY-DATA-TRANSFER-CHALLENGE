@@ -4,13 +4,15 @@
 #include <rte_eal.h>
 #include <rte_errno.h>
 
+#include <cstdio>
+
 using SenderConfig = transport::EndpointConfig;
 
 
 int main(int argc, char* argv[])
 {
     int eal_argc{};
-    if (eal_argc = rte_eal_init(argc, argv); eal_argc == -1)
+    if (eal_argc = rte_eal_init(argc, argv); eal_argc < 0)
     {
         std::fprintf(stderr, "ERROR: EAL init failed: %s\n", rte_strerror(rte_errno));
         return 1;
@@ -28,7 +30,7 @@ int main(int argc, char* argv[])
 
     if (rte_eal_cleanup() != 0)
     {
-        std::fprintf(stderr, "ERROR: Failed to clean up endpoint config\n");
+        std::fprintf(stderr, "ERROR: EAL cleanu\n");
         return 2;
     }
 
