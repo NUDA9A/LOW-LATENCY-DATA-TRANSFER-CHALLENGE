@@ -1,11 +1,13 @@
 #include <lldt/config.hpp>
 #include <lldt/dpdk/ena_port_info.hpp>
+#include <lldt/dpdk/ena_tx_port.hpp>
 
 
 #include <rte_eal.h>
 #include <rte_errno.h>
 
 #include <cstdio>
+
 
 namespace
 {
@@ -19,6 +21,12 @@ namespace
 
         const auto ena_port_info = dpdk::try_get_ena_port_info();
         if (!ena_port_info)
+        {
+            return 1;
+        }
+
+        const dpdk::EnaTxPort port{ena_port_info->port_id};
+        if (!port.try_configure())
         {
             return 1;
         }
