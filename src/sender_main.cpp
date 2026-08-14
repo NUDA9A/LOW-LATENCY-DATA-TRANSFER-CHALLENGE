@@ -25,8 +25,13 @@ namespace
             return 1;
         }
 
-        const dpdk::EnaTxPort port{ena_port_info->port_id};
+        dpdk::EnaTxPort port{ena_port_info->port_id};
         if (!port.try_configure())
+        {
+            return 1;
+        }
+
+        if (!port.try_setup_tx_queue(ena_port_info->socket_id, ena_port_info->eth_dev_info.default_txportconf.ring_size))
         {
             return 1;
         }
