@@ -3,6 +3,8 @@
 
 #include <cstdint>
 
+#include "rte_mempool.h"
+
 namespace dpdk
 {
     class EnaTxPort
@@ -19,10 +21,12 @@ namespace dpdk
         explicit EnaTxPort(std::uint16_t port_id) noexcept;
 
         bool try_configure() const noexcept;
-        bool try_setup_tx_queue(int socket_id, std::uint16_t desc_count) noexcept;
-        std::uint16_t get_effective_desc_count() const noexcept;
+        bool try_setup_tx_queue(int socket_id) const noexcept;
+        bool try_create_tx_mbuf_pool(int socket_id) noexcept;
+
+        rte_mempool* get_tx_mbuf_pool() const noexcept;
     private:
         std::uint16_t port_id_;
-        std::uint16_t desc_count_{};
+        rte_mempool* tx_mbuf_pool_{nullptr};
     };
 }
