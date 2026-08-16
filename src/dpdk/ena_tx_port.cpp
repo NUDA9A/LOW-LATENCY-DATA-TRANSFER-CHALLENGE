@@ -4,6 +4,9 @@
 #include <rte_ethdev.h>
 #include <rte_mbuf.h>
 
+#include <array>
+#include <cstring>
+
 namespace
 {
     constexpr std::uint64_t REQUIRED_TX_OFFLOADS = RTE_ETH_TX_OFFLOAD_IPV4_CKSUM | RTE_ETH_TX_OFFLOAD_UDP_CKSUM;
@@ -27,21 +30,20 @@ namespace dpdk
         rte_mempool_free(tx_mbuf_pool_);
     }
 
-    bool EnaTxPort::try_configure() const noexcept
+    bool EnaTxPort::try_initialize(const int socket_id) noexcept
     {
         rte_eth_conf cfg{};
         cfg.txmode.offloads |= REQUIRED_TX_OFFLOADS;
+        if (rte_eth_dev_configure(port_id_, RX_QUEUE_NUMBER, TX_QUEUE_NUMBER, &cfg) != 0)
+        {
+            return false;
+        }
 
-        return rte_eth_dev_configure(port_id_, RX_QUEUE_NUMBER, TX_QUEUE_NUMBER, &cfg) == 0;
-    }
+        if (rte_eth_tx_queue_setup(port_id_, TX_QUEUE_ID, TX_DESC_COUNT, socket_id, nullptr) != 0)
+        {
+            return false;
+        }
 
-    bool EnaTxPort::try_setup_tx_queue(const int socket_id) const noexcept
-    {
-        return rte_eth_tx_queue_setup(port_id_, TX_QUEUE_ID, TX_DESC_COUNT, socket_id, nullptr) == 0;
-    }
-
-    bool EnaTxPort::try_create_tx_mbuf_pool(int socket_id) noexcept
-    {
         tx_mbuf_pool_ = rte_pktmbuf_pool_create(
             MBUF_POOL_NAME,
             TX_MBUF_COUNT,
@@ -50,8 +52,34 @@ namespace dpdk
             RTE_MBUF_DEFAULT_BUF_SIZE,
             socket_id
         );
+        if (!tx_mbuf_pool_)
+        {
+            return false;
+        }
 
-        return tx_mbuf_pool_ != nullptr;
+        std::array<rte_mbuf*, TX_MBUF_COUNT> tx_mbufs{};
+        if (rte_pktmbuf_alloc_bulk(tx_mbuf_pool_, tx_mbufs.data(), TX_MBUF_COUNT) != 0)
+        {
+            return false;
+        }
+
+        for (auto* mbuf : tx_mbufs)
+        {
+            std::memset(mbuf->buf_addr, 0, mbuf->buf_len);
+        }
+
+        rte_pktmbuf_free_bulk(tx_mbufs.data(), TX_MBUF_COUNT);
+
+        rte_mbuf* cache_warmup_mbuf{nullptr};
+
+        if (cache_warmup_mbuf = rte_pktmbuf_alloc(tx_mbuf_pool_); !cache_warmup_mbuf)
+        {
+            return false;
+        }
+
+        rte_pktmbuf_free(cache_warmup_mbuf);
+
+        return true;
     }
 
     rte_mempool* EnaTxPort::get_tx_mbuf_pool() const noexcept

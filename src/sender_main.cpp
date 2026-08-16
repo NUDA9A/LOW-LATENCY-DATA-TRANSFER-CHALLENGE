@@ -26,17 +26,7 @@ namespace
         }
 
         dpdk::EnaTxPort port{ena_port_info->port_id};
-        if (!port.try_configure())
-        {
-            return 1;
-        }
-
-        if (!port.try_setup_tx_queue(ena_port_info->socket_id))
-        {
-            return 1;
-        }
-
-        if (!port.try_create_tx_mbuf_pool(ena_port_info->socket_id))
+        if (!port.try_initialize(ena_port_info->socket_id))
         {
             return 1;
         }

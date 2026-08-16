@@ -20,9 +20,7 @@ namespace dpdk
 
         explicit EnaTxPort(std::uint16_t port_id) noexcept;
 
-        bool try_configure() const noexcept;
-        bool try_setup_tx_queue(int socket_id) const noexcept;
-        bool try_create_tx_mbuf_pool(int socket_id) noexcept;
+        bool try_initialize(int socket_id) noexcept;
 
         rte_mempool* get_tx_mbuf_pool() const noexcept;
     private:
