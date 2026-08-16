@@ -6,7 +6,7 @@ Hi! Welcome to the **Low-latency data transfer** challenge from the HFT fund Spe
 
 The key requirement: optimal latency not just on average, but at high quantiles and under load. The system has to hold latency down when the data flow is heavy and when there are many receivers.
 
-A Claude agent will be working on the same task alongside you. Its solution will appear as the competition goes on and will live in a public repository — you're welcome to use it as a baseline.
+A Claude agent is working on the same task alongside you. Its solution will be improved as the competition goes on — you're welcome to use it as a baseline. Solution description as well as repo link can be found in [organizers' notes](baseline_solution_en.md).
 
 **Prizes:**
 - 1st place – 6,000 USD gross
