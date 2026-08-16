@@ -26,6 +26,7 @@ namespace dpdk
 
     EnaTxPort::~EnaTxPort()
     {
+        rte_eth_dev_stop(port_id_);
         rte_eth_dev_close(port_id_);
         rte_mempool_free(tx_mbuf_pool_);
     }
@@ -79,7 +80,7 @@ namespace dpdk
 
         rte_pktmbuf_free(cache_warmup_mbuf);
 
-        return true;
+        return rte_eth_dev_start(port_id_) == 0;
     }
 
     rte_mempool* EnaTxPort::get_tx_mbuf_pool() const noexcept
