@@ -8,18 +8,56 @@ namespace transport
     static constexpr std::uint32_t MAGIC_LLDT = 0x4c'4c'44'54; // LLDT
     static constexpr std::uint8_t RAW_CODEC_ID = 1;
 
-    RawDataPacketBuildResult RawDataPacketBuilder::build_canonical(
+    RawDataPacketBuilder::RawDataPacketBuilder(
         std::byte* output,
-        const std::size_t capacity,
-        const std::uint64_t session_id,
-        const std::uint64_t data_seq,
-        const ValidatedSourceFrameView& frame_view) noexcept
+        std::size_t capacity,
+        std::uint64_t session_id,
+        std::uint64_t data_seq,
+        std::uint16_t record_limit,
+        const ValidatedSourceFrameView& first_frame
+        ) noexcept :
+    output_(output),
+    write_pos_(output + DATA_HEADER_SIZE + first_frame.frame_size),
+    remaining_payload_capacity_(capacity - DATA_HEADER_SIZE - first_frame.frame_size),
+    session_id_(session_id),
+    data_seq_(data_seq),
+    first_src_seq_(first_frame.source_seq_id),
+    payload_length_(first_frame.frame_size),
+    record_count_(1),
+    record_limit_(record_limit)
     {
-        if (capacity < DATA_HEADER_SIZE + frame_view.frame_size)
+        std::memcpy(output + DATA_HEADER_SIZE, first_frame.data, first_frame.frame_size);
+    }
+
+    RawDataPacketBuildStatus RawDataPacketBuilder::try_append(const ValidatedSourceFrameView& frame) noexcept
+    {
+        if (record_count_ >= record_limit_)
         {
-            return {RawDataPacketBuildStatus::OutputTooSmall, std::nullopt};
+            return RawDataPacketBuildStatus::RecordLimitReached;
         }
 
+        if (frame.frame_size > remaining_payload_capacity_)
+        {
+            return RawDataPacketBuildStatus::OutputTooSmall;
+        }
+
+        std::memcpy(write_pos_, frame.data, frame.frame_size);
+        write_pos_ += frame.frame_size;
+        remaining_payload_capacity_ -= frame.frame_size;
+        payload_length_ += frame.frame_size;
+        record_count_++;
+
+        return RawDataPacketBuildStatus::Ok;
+    }
+
+    void RawDataPacketBuilder::writeLLDTHeader(
+        std::byte* output,
+        const std::uint64_t session_id,
+        const std::uint64_t data_seq,
+        const std::uint64_t first_src_seq,
+        const std::uint32_t payload_length,
+        const std::uint16_t record_count) noexcept
+    {
         auto offset = writeSizeofTBE(output, MAGIC_LLDT);
 
         constexpr std::uint8_t protocol_version = 1;
@@ -34,30 +72,56 @@ namespace transport
 
         offset += writeSizeofTBE(output + offset, data_seq);
 
-        offset += writeSizeofTBE(output + offset, frame_view.source_seq_id); // first_source_seq
+        offset += writeSizeofTBE(output + offset, first_src_seq);
 
-        offset += writeSizeofTBE(output + offset, frame_view.frame_size); // payload_length
+        offset += writeSizeofTBE(output + offset, payload_length);
 
-        constexpr std::uint16_t record_count = 1;
         offset += writeSizeofTBE(output + offset, record_count); // amount of source frames into payload of 1 Data-packet
 
         offset += writeSizeofTBE(output + offset, RAW_CODEC_ID);
 
         constexpr std::uint8_t flags = 0;
-        offset += writeSizeofTBE(output + offset, flags);
+        writeSizeofTBE(output + offset, flags);
+    }
 
-        std::memcpy(output + offset, frame_view.data, frame_view.frame_size);
+    CanonicalDataPacketView RawDataPacketBuilder::finalize() noexcept
+    {
+        writeLLDTHeader(output_, session_id_, data_seq_, first_src_seq_, payload_length_, record_count_);
+
+        return CanonicalDataPacketView{
+            output_,
+            DATA_HEADER_SIZE + payload_length_,
+            session_id_,
+            data_seq_,
+            first_src_seq_,
+            record_count_
+        };
+    }
+
+    RawDataPacketBuildResult RawDataPacketBuilder::build_canonical(
+        std::byte* output,
+        const std::size_t capacity,
+        const std::uint64_t session_id,
+        const std::uint64_t data_seq,
+        const ValidatedSourceFrameView& frame_view) noexcept
+    {
+        if (capacity < DATA_HEADER_SIZE + frame_view.frame_size)
+        {
+            return {RawDataPacketBuildStatus::OutputTooSmall, std::nullopt};
+        }
+
+        RawDataPacketBuilder builder{
+            output,
+            capacity,
+            session_id,
+            data_seq,
+            1,
+            frame_view
+        };
 
         return {
             RawDataPacketBuildStatus::Ok,
-            CanonicalDataPacketView{
-                output,
-                DATA_HEADER_SIZE + frame_view.frame_size,
-                session_id,
-                data_seq,
-                frame_view.source_seq_id,
-                record_count
-            }
+            builder.finalize()
         };
     }
 }

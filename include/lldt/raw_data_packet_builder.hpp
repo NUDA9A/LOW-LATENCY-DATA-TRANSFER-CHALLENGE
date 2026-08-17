@@ -12,7 +12,7 @@ namespace transport
 {
     enum class RawDataPacketBuildStatus
     {
-        Ok, OutputTooSmall
+        Ok, OutputTooSmall, RecordLimitReached
     };
 
     struct RawDataPacketBuildResult
@@ -25,6 +25,18 @@ namespace transport
     {
     public:
         static constexpr std::uint16_t DATA_HEADER_SIZE = 40;
+
+        RawDataPacketBuilder(
+            std::byte* output,
+            std::size_t capacity,
+            std::uint64_t session_id,
+            std::uint64_t data_seq,
+            std::uint16_t record_limit,
+            const ValidatedSourceFrameView& first_frame) noexcept;
+
+        RawDataPacketBuildStatus try_append(const ValidatedSourceFrameView& frame) noexcept;
+
+        CanonicalDataPacketView finalize() noexcept;
 
         static RawDataPacketBuildResult build_canonical(
             std::byte* output,
@@ -44,5 +56,25 @@ namespace transport
 
             return size;
         }
+
+        static void writeLLDTHeader(
+            std::byte* output,
+            std::uint64_t session_id,
+            std::uint64_t data_seq,
+            std::uint64_t first_src_seq,
+            std::uint32_t payload_length,
+            std::uint16_t record_count) noexcept;
+
+        std::byte* output_;
+        std::byte* write_pos_;
+        std::size_t remaining_payload_capacity_;
+
+        std::uint64_t session_id_;
+        std::uint64_t data_seq_;
+        std::uint64_t first_src_seq_;
+
+        std::uint32_t payload_length_;
+        std::uint16_t record_count_;
+        std::uint16_t record_limit_;
     };
 }
