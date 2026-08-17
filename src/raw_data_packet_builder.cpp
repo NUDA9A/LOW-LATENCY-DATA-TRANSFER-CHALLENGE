@@ -10,10 +10,9 @@ namespace transport
 
     RawDataPacketBuilder::RawDataPacketBuilder(
         std::byte* output,
-        std::size_t capacity,
-        std::uint64_t session_id,
-        std::uint64_t data_seq,
-        std::uint16_t record_limit,
+        const std::size_t capacity,
+        const std::uint64_t session_id,
+        const std::uint64_t data_seq,
         const ValidatedSourceFrameView& first_frame
         ) noexcept :
     output_(output),
@@ -23,19 +22,13 @@ namespace transport
     data_seq_(data_seq),
     first_src_seq_(first_frame.source_seq_id),
     payload_length_(first_frame.frame_size),
-    record_count_(1),
-    record_limit_(record_limit)
+    record_count_(1)
     {
         std::memcpy(output + DATA_HEADER_SIZE, first_frame.data, first_frame.frame_size);
     }
 
     RawDataPacketBuildStatus RawDataPacketBuilder::try_append(const ValidatedSourceFrameView& frame) noexcept
     {
-        if (record_count_ >= record_limit_)
-        {
-            return RawDataPacketBuildStatus::RecordLimitReached;
-        }
-
         if (frame.frame_size > remaining_payload_capacity_)
         {
             return RawDataPacketBuildStatus::OutputTooSmall;
@@ -115,7 +108,6 @@ namespace transport
             capacity,
             session_id,
             data_seq,
-            1,
             frame_view
         };
 

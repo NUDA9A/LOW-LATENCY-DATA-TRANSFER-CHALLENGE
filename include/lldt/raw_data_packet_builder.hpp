@@ -12,7 +12,7 @@ namespace transport
 {
     enum class RawDataPacketBuildStatus
     {
-        Ok, OutputTooSmall, RecordLimitReached
+        Ok, OutputTooSmall
     };
 
     struct RawDataPacketBuildResult
@@ -31,7 +31,6 @@ namespace transport
             std::size_t capacity,
             std::uint64_t session_id,
             std::uint64_t data_seq,
-            std::uint16_t record_limit,
             const ValidatedSourceFrameView& first_frame) noexcept;
 
         RawDataPacketBuildStatus try_append(const ValidatedSourceFrameView& frame) noexcept;
@@ -75,6 +74,5 @@ namespace transport
 
         std::uint32_t payload_length_;
         std::uint16_t record_count_;
-        std::uint16_t record_limit_;
     };
 }

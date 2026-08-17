@@ -24,6 +24,18 @@ namespace dpdk
         rte_udp_hdr udp{};
     };
 
+    inline constexpr std::size_t DATA_PACKET_CANONICAL_CAPACITY = 1472;
+
+    inline constexpr std::size_t MAX_DATA_PACKET_SIZE = PreparedDestination::HEADER_SIZE + DATA_PACKET_CANONICAL_CAPACITY; // 1514
+
+    std::byte* try_reserve_data_packet(rte_mbuf* mbuf) noexcept;
+
+    void finalize_data_packet(
+        rte_mbuf* mbuf,
+        const PreparedDestination& dst,
+        std::size_t canonical_size
+        ) noexcept;
+
     transport::RawDataPacketBuildResult build(
             rte_mbuf* mbuf,
             const PreparedDestination& destination,
