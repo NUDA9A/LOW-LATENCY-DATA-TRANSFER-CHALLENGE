@@ -1,12 +1,20 @@
 #include <lldt/config.hpp>
 #include <lldt/dpdk/ena_port_info.hpp>
 #include <lldt/dpdk/ena_tx_port.hpp>
+#include <lldt/sender_shm_reader.hpp>
+#include <lldt/dpdk/data_packet_materializer.hpp>
 
 
 #include <rte_eal.h>
 #include <rte_errno.h>
+#include <rte_ether.h>
+#include <rte_mbuf.h>
+#include <rte_ethdev.h>
+
+#include <sys/random.h>
 
 #include <cstdio>
+#include <cstring>
 
 
 namespace
@@ -29,6 +37,60 @@ namespace
         if (!port.try_initialize(ena_port_info->socket_id))
         {
             return 1;
+        }
+
+        transport::SenderShmReader reader{configOpt->shm_name, configOpt->slots};
+
+        rte_ether_addr next_hop_mac{};
+        std::memcpy(next_hop_mac.addr_bytes, configOpt->next_hop_mac.data(), configOpt->next_hop_mac.size());
+
+        const auto dst = dpdk::prepare_destination(
+            ena_port_info->eth_addr,
+            next_hop_mac,
+            configOpt->local_ipv4_be,
+            configOpt->peer_ipv4_be,
+            configOpt->data_port
+        );
+
+        std::uint64_t session_id{};
+        while (!session_id)
+        {
+            if (getrandom(&session_id, sizeof(session_id), 0) != static_cast<ssize_t>(sizeof(session_id)))
+            {
+                std::fprintf(stderr, "ERROR: Can not generate valid session_id.\n");
+                return 1;
+            }
+        }
+
+        std::uint64_t next_data_seq{};
+
+        while (true)
+        {
+            const auto reader_res = reader.try_read();
+            if (reader_res.status != transport::SenderShmReaderStatus::Ok)
+            {
+                continue;
+            }
+
+            auto* mbuf = rte_pktmbuf_alloc(port.get_tx_mbuf_pool());
+            if (!mbuf)
+            {
+                continue;
+            }
+
+            const auto build_res = dpdk::build(mbuf, dst, session_id, next_data_seq, *reader_res.frame_view);
+            if (build_res.status != transport::RawDataPacketBuildStatus::Ok)
+            {
+                rte_pktmbuf_free(mbuf);
+                std::fprintf(stderr, "[ERROR]: Can not build data\n");
+                return 1;
+            }
+            next_data_seq++;
+
+            if (rte_eth_tx_burst(ena_port_info->port_id, dpdk::EnaTxPort::TX_QUEUE_ID, &mbuf, 1) == 0)
+            {
+                rte_pktmbuf_free(mbuf);
+            }
         }
 
         return 0;

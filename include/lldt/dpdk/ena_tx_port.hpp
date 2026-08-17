@@ -10,6 +10,8 @@ namespace dpdk
     class EnaTxPort
     {
     public:
+        static constexpr std::uint16_t TX_QUEUE_ID = 0;
+
         EnaTxPort() = delete;
         EnaTxPort(const EnaTxPort&) = delete;
         EnaTxPort(EnaTxPort&&) = delete;

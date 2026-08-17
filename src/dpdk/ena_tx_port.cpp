@@ -12,7 +12,6 @@ namespace
     constexpr std::uint64_t REQUIRED_TX_OFFLOADS = RTE_ETH_TX_OFFLOAD_IPV4_CKSUM | RTE_ETH_TX_OFFLOAD_UDP_CKSUM;
     constexpr std::uint16_t RX_QUEUE_NUMBER = 0;
     constexpr std::uint16_t TX_QUEUE_NUMBER = 1;
-    constexpr std::uint16_t TX_QUEUE_ID = 0;
     constexpr std::uint16_t PRIV_SIZE = 0; // Need if we have metadata, which we don't have.
     constexpr std::uint16_t TX_DESC_COUNT = 1024;
     constexpr unsigned TX_MBUF_COUNT = 2047; // We need TX_MBUF_COUNT = 2^q - 1, so we take TX_DESC_COUNT(==1024) * 2 - 1
