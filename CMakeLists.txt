@@ -15,7 +15,7 @@ target_include_directories(lldt_sender_core PUBLIC $<BUILD_INTERFACE:${CMAKE_CUR
 
 lldt_enable_project_warnings(lldt_sender_core)
 
-add_executable(lldt_sender src/sender_main.cpp src/dpdk/ena_port_info.cpp src/dpdk/ena_tx_port.cpp)
+add_executable(lldt_sender src/sender_main.cpp src/dpdk/ena_port_info.cpp src/dpdk/ena_tx_port.cpp src/dpdk/data_packet_materializer.cpp)
 
 lldt_enable_project_warnings(lldt_sender)
 
