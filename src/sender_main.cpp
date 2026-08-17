@@ -3,6 +3,7 @@
 #include <lldt/dpdk/ena_tx_port.hpp>
 #include <lldt/sender_shm_reader.hpp>
 #include <lldt/dpdk/data_packet_materializer.hpp>
+#include <lldt/raw_data_packet_builder.hpp>
 
 
 #include <rte_eal.h>
@@ -94,16 +95,28 @@ namespace
                 continue;
             }
 
-            const auto build_res = dpdk::build(mbuf, dst, session_id, next_data_seq, *reader_res.frame_view);
-            if (build_res.status != transport::RawDataPacketBuildStatus::Ok)
+            auto* canonical_output = dpdk::try_reserve_data_packet(mbuf);
+            if (!canonical_output)
             {
                 rte_pktmbuf_free(mbuf);
-                std::fprintf(stderr, "[ERROR]: Can not build data\n");
+                std::fprintf(stderr, "ERROR: Could not reserve data packet.\n");
                 return 1;
             }
-            data_counters.frames_packetized += build_res.canonical_data->record_count;
+
+            transport::RawDataPacketBuilder builder{
+                canonical_output,
+                dpdk::DATA_PACKET_CANONICAL_CAPACITY,
+                session_id,
+                next_data_seq,
+                *reader_res.frame_view
+            };
+
+            const auto canonical_data = builder.finalize();
+            dpdk::finalize_data_packet(mbuf, dst, canonical_data.packet_size);
+
+            data_counters.frames_packetized += canonical_data.record_count;
             data_counters.data_packets_built++;
-            data_counters.data_payload_bytes += build_res.canonical_data->packet_size - transport::RawDataPacketBuilder::DATA_HEADER_SIZE;
+            data_counters.data_payload_bytes += canonical_data.packet_size - transport::RawDataPacketBuilder::DATA_HEADER_SIZE;
             data_counters.data_sequences_consumed++;
             next_data_seq++;
 

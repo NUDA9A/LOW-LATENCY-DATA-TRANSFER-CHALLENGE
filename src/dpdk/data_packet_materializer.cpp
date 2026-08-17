@@ -94,34 +94,4 @@ namespace dpdk
 
         return destination;
     }
-
-    transport::RawDataPacketBuildResult build(
-        rte_mbuf* mbuf,
-        const PreparedDestination& destination,
-        std::uint64_t session_id,
-        std::uint64_t data_seq,
-        const transport::ValidatedSourceFrameView& frame_view
-        ) noexcept
-    {
-        auto* output = try_reserve_data_packet(mbuf);
-        if (output == nullptr)
-        {
-            return {transport::RawDataPacketBuildStatus::OutputTooSmall, std::nullopt};
-        }
-
-        const auto result = transport::RawDataPacketBuilder::build_canonical(
-            output,
-            DATA_PACKET_CANONICAL_CAPACITY,
-            session_id,
-            data_seq,
-            frame_view
-        );
-
-        if (result.status == transport::RawDataPacketBuildStatus::Ok)
-        {
-            finalize_data_packet(mbuf, destination, result.canonical_data->packet_size);
-        }
-
-        return result;
-    }
 }

@@ -1,6 +1,5 @@
 #pragma once
 
-#include <lldt/raw_data_packet_builder.hpp>
 
 #include <rte_mbuf.h>
 #include <rte_ether.h>
@@ -35,14 +34,6 @@ namespace dpdk
         const PreparedDestination& dst,
         std::size_t canonical_size
         ) noexcept;
-
-    transport::RawDataPacketBuildResult build(
-            rte_mbuf* mbuf,
-            const PreparedDestination& destination,
-            std::uint64_t session_id,
-            std::uint64_t data_seq,
-            const transport::ValidatedSourceFrameView& frame_view
-            ) noexcept;
 
     PreparedDestination prepare_destination(
         const rte_ether_addr& local_mac,
