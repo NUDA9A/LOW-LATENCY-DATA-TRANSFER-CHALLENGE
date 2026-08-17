@@ -105,7 +105,7 @@ static bool parsePortArg(
         return false;
     }
 
-    const auto portOpt = parseNumFromString<std::uint16_t>(portArgOpt->c_str(), portArgOpt->size(), flagName.c_str());
+    const auto portOpt = parseNumFromString<std::uint16_t>(portArgOpt->c_str(), portArgOpt->size(), flagName);
     if (!portOpt)
     {
         return false;
@@ -156,7 +156,8 @@ namespace transport
                                 "--data-port <port>\n"
                                 "--control-port <port>\n"
                                 "--next-hop-mac <xx:xx:xx:xx:xx:xx>\n"
-                                "--observability minimal|performance|diagnostic\n");
+                                "--observability minimal|performance|diagnostic\n"
+                                "[--batching]\n");
                     return std::nullopt;
                 }
                 return argv[++i];
@@ -335,6 +336,10 @@ namespace transport
 
                 nextHopMacFlag = true;
             }
+            else if (equals_ignore_case(arg, "--batching"))
+            {
+                config.batching_enabled = true;
+            }
             else
             {
                 std::fprintf(stderr, "[ERROR]: Unknown argument: %s.\n", arg);
@@ -354,7 +359,8 @@ namespace transport
                                 "--data-port <port>\n"
                                 "--control-port <port>\n"
                                 "--next-hop-mac <xx:xx:xx:xx:xx:xx>\n"
-                                "--observability minimal|performance|diagnostic\n");
+                                "--observability minimal|performance|diagnostic\n"
+                                "[--batching]\n");
             return std::nullopt;
         }
 

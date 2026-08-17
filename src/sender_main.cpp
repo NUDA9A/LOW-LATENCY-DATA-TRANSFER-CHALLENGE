@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
+#include <optional>
 
 
 namespace
@@ -79,14 +80,27 @@ namespace
 
         SenderDataCounters data_counters{};
 
+        const bool batching_enabled = configOpt->batching_enabled;
+
+        std::optional<transport::ValidatedSourceFrameView> carry_frame;
+
         while (true)
         {
-            const auto reader_res = reader.try_read();
-            if (reader_res.status != transport::SenderShmReaderStatus::Ok)
+            transport::ValidatedSourceFrameView first_frame{};
+            if (carry_frame)
             {
-                continue;
+                first_frame = *carry_frame;
+                carry_frame.reset();
+            } else
+            {
+                const auto reader_res = reader.try_read();
+                if (reader_res.status != transport::SenderShmReaderStatus::Ok)
+                {
+                    continue;
+                }
+                data_counters.frames_offered_to_packetization++;
+                first_frame = reader_res.frame_view.value();
             }
-            data_counters.frames_offered_to_packetization++;
 
             auto* mbuf = rte_pktmbuf_alloc(port.get_tx_mbuf_pool());
             if (!mbuf)
@@ -108,8 +122,34 @@ namespace
                 dpdk::DATA_PACKET_CANONICAL_CAPACITY,
                 session_id,
                 next_data_seq,
-                *reader_res.frame_view
+                first_frame
             };
+
+            if (batching_enabled)
+            {
+                while (true)
+                {
+                    const auto next = reader.try_read();
+                    if (next.status != transport::SenderShmReaderStatus::Ok)
+                    {
+                        break;
+                    }
+                    data_counters.frames_offered_to_packetization++;
+
+                    const auto& frame = *next.frame_view;
+                    if (frame.begins_after_source_gap)
+                    {
+                        carry_frame = frame;
+                        break;
+                    }
+
+                    if (builder.try_append(frame) != transport::RawDataPacketBuildStatus::Ok)
+                    {
+                        carry_frame = frame;
+                        break;
+                    }
+                }
+            }
 
             const auto canonical_data = builder.finalize();
             dpdk::finalize_data_packet(mbuf, dst, canonical_data.packet_size);
