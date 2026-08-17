@@ -12,7 +12,7 @@
 
 namespace transport
 {
-    struct SenderCounters
+    struct SenderInputCounters
     {
         std::uint64_t frames_read{};
         std::uint64_t bytes_read{};
@@ -41,7 +41,7 @@ namespace transport
         SenderShmReader(const std::string& shm_name, std::uint32_t slots);
 
         SenderReaderResult try_read();
-        const SenderCounters& get_counters() const noexcept;
+        const SenderInputCounters& get_counters() const noexcept;
     private:
         shm::Segment segment_;
         shm::Ring ring_{};
@@ -49,6 +49,6 @@ namespace transport
         std::uint64_t prev_valid_{};
         bool has_prev_valid_{false};
         std::array<std::byte, shm::kFrameCap> buffer_{};
-        SenderCounters counters_{};
+        SenderInputCounters counters_{};
     };
 }

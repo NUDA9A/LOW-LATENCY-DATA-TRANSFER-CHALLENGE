@@ -91,7 +91,7 @@ namespace transport
         __builtin_unreachable();
     }
 
-    const SenderCounters& SenderShmReader::get_counters() const noexcept
+    const SenderInputCounters& SenderShmReader::get_counters() const noexcept
     {
         return counters_;
     }

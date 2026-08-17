@@ -15,10 +15,22 @@
 
 #include <cstdio>
 #include <cstring>
+#include <cstdint>
 
 
 namespace
 {
+    struct alignas(64) SenderDataCounters {
+        std::uint64_t frames_offered_to_packetization{};
+        std::uint64_t mbuf_alloc_failures{};
+        std::uint64_t frames_packetized{};
+        std::uint64_t data_packets_built{};
+        std::uint64_t data_payload_bytes{};
+        std::uint64_t data_sequences_consumed{};
+        std::uint64_t tx_packets_enqueued{};
+        std::uint64_t tx_packets_unsent{};
+    };
+
     int run_sender(const int argc, char* argv[])
     {
         const auto configOpt = transport::try_parse_endpoint_config(argc, argv);
@@ -64,6 +76,8 @@ namespace
 
         std::uint64_t next_data_seq{};
 
+        SenderDataCounters data_counters{};
+
         while (true)
         {
             const auto reader_res = reader.try_read();
@@ -71,10 +85,12 @@ namespace
             {
                 continue;
             }
+            data_counters.frames_offered_to_packetization++;
 
             auto* mbuf = rte_pktmbuf_alloc(port.get_tx_mbuf_pool());
             if (!mbuf)
             {
+                data_counters.mbuf_alloc_failures++;
                 continue;
             }
 
@@ -85,12 +101,19 @@ namespace
                 std::fprintf(stderr, "[ERROR]: Can not build data\n");
                 return 1;
             }
+            data_counters.frames_packetized += build_res.canonical_data->record_count;
+            data_counters.data_packets_built++;
+            data_counters.data_payload_bytes += build_res.canonical_data->packet_size - transport::RawDataPacketBuilder::DATA_HEADER_SIZE;
+            data_counters.data_sequences_consumed++;
             next_data_seq++;
 
             if (rte_eth_tx_burst(ena_port_info->port_id, dpdk::EnaTxPort::TX_QUEUE_ID, &mbuf, 1) == 0)
             {
+                data_counters.tx_packets_unsent++;
                 rte_pktmbuf_free(mbuf);
+                continue;
             }
+            data_counters.tx_packets_enqueued++;
         }
 
         return 0;
