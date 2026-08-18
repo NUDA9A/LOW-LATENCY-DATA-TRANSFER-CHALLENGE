@@ -3,10 +3,11 @@
 
 #include <cstring>
 
+#include "message.h"
+
 namespace transport
 {
     static constexpr std::uint32_t MAGIC_LLDT = 0x4c'4c'44'54; // LLDT
-    static constexpr std::uint8_t RAW_CODEC_ID = 1;
 
     RawDataPacketBuilder::RawDataPacketBuilder(
         std::byte* output,
@@ -71,7 +72,7 @@ namespace transport
 
         offset += writeSizeofTBE(output + offset, record_count); // amount of source frames into payload of 1 Data-packet
 
-        offset += writeSizeofTBE(output + offset, RAW_CODEC_ID);
+        offset += writeSizeofTBE(output + offset, msg::kCodecId);
 
         constexpr std::uint8_t flags = 0;
         writeSizeofTBE(output + offset, flags);

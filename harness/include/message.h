@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <cstddef>
 
 namespace msg {
 
@@ -12,6 +13,8 @@ inline constexpr uint32_t kSymbolLen = 16;
 inline constexpr uint32_t kVenueLen = 16;
 inline constexpr uint32_t kCurrencyLen = 8;
 inline constexpr uint32_t kBookDepth = 5;
+inline constexpr uint8_t kCodecId = 1; // Raw codec ID
+inline constexpr char kProfileName[] = "raw";
 
 enum class Type : uint16_t {
   Trade = 1,
@@ -27,6 +30,11 @@ struct Header {
   uint16_t version;
   uint32_t body_len;    // total message size in bytes
 };
+
+constexpr uint32_t frame_size(const Header& header) noexcept
+{
+  return header.body_len;
+}
 
 struct alignas(64) Trade {
   Header header;
@@ -98,6 +106,14 @@ struct alignas(64) OrderBook {
   uint8_t flags;
   uint8_t reserved[26];
 };
+
+
+static_assert(sizeof(Header) == 24, "sizeof(Header) != 24");
+static_assert(offsetof(Header, seq_id) == 0, "offsetof(Header, seq_id) != 0");
+static_assert(offsetof(Header, send_ts_ns) == 8, "offsetof(Header, send_ts_ns) != 8");
+static_assert(sizeof(Trade) == 192, "sizeof(Trade) != 192");
+static_assert(sizeof(Bbo) == 192, "sizeof(Bbo) != 192");
+static_assert(sizeof(OrderBook) == 576, "sizeof(OrderBook) != 576");
 
 inline constexpr uint32_t kMaxFrame = sizeof(OrderBook);
 static_assert(sizeof(Trade) <= kMaxFrame, "kMaxFrame must fit every message");

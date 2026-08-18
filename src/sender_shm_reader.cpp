@@ -37,7 +37,9 @@ namespace transport
                 msg::Header header{};
                 std::memcpy(&header, buffer_.data(), sizeof(msg::Header));
 
-                if (header.body_len < sizeof(msg::Header) || header.body_len != read_len)
+                std::uint32_t expected_size = msg::frame_size(header);
+
+                if (expected_size < sizeof(msg::Header) || expected_size > msg::kMaxFrame || expected_size != read_len)
                 {
                     counters_.invalid_frames++;
                     return {SenderShmReaderStatus::Invalid, std::nullopt};
