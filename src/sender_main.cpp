@@ -18,10 +18,19 @@
 #include <cstring>
 #include <cstdint>
 #include <optional>
+#include <csignal>
+#include <cerrno>
 
 
 namespace
 {
+    volatile std::sig_atomic_t stop_requested{};
+
+    void handle_signal(int)
+    {
+        stop_requested = 1;
+    }
+
     struct alignas(64) SenderDataCounters {
         std::uint64_t frames_offered_to_packetization{};
         std::uint64_t mbuf_alloc_failures{};
@@ -84,8 +93,20 @@ namespace
 
         std::optional<transport::ValidatedSourceFrameView> carry_frame;
 
+        bool stopping = false;
+
         while (true)
         {
+            if (stop_requested)
+            {
+                stopping = true;
+            }
+
+            if (stopping && !carry_frame.has_value())
+            {
+                break;
+            }
+
             transport::ValidatedSourceFrameView first_frame{};
             if (carry_frame)
             {
@@ -129,6 +150,13 @@ namespace
             {
                 while (true)
                 {
+                    if (stop_requested)
+                    {
+                        stopping = true;
+
+                        break;
+                    }
+
                     const auto next = reader.try_read();
                     if (next.status != transport::SenderShmReaderStatus::Ok)
                     {
@@ -184,6 +212,24 @@ int main(int argc, char* argv[])
 
     argc -= eal_argc;
     argv += eal_argc;
+
+    struct sigaction sa{};
+    sa.sa_handler = handle_signal;
+
+    sigemptyset(&sa.sa_mask);
+    sa.sa_flags = 0;
+
+    if (sigaction(SIGTERM, &sa, nullptr) < 0)
+    {
+        std::fprintf(stderr, "ERROR: sigaction failed: %s.\n", strerror(errno));
+        return 1;
+    }
+
+    if (sigaction(SIGINT, &sa, nullptr) < 0)
+    {
+        std::fprintf(stderr, "ERROR: sigaction failed: %s.\n", strerror(errno));
+        return 1;
+    }
 
     const int sender_result = run_sender(argc, argv);
     const int cleanup_result = rte_eal_cleanup();
