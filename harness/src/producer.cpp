@@ -67,6 +67,106 @@ Config parse_args(int argc, char** argv) {
   }
   return c;
 }
+#if defined(LLDT_MESSAGE_PROFILE_COMPACT)
+  struct CompactTradeState
+{
+  uint64_t cumulative_quantity_lots{};
+  uint64_t cumulative_notional_tick_lots{};
+  uint64_t cumulative_trade_count{};
+};
+
+  CompactTradeState compact_trade_state{};
+
+  void fill_header(msg::Header& h, uint64_t seq, msg::Type type, uint8_t flags, uint64_t exchange_ts_ns)
+  {
+    h.seq_id = seq;
+    h.instrument = msg::kBtcUsdtInstrument;
+    h.type = static_cast<uint8_t>(type);
+    h.flags = flags;
+    h.send_ts_ns = util::now_ns();
+
+    const int64_t diff = static_cast<int64_t>(h.send_ts_ns) - static_cast<int64_t>(exchange_ts_ns);
+    h.exchange_ts_delta_ns = static_cast<int32_t>(diff);
+  }
+
+  uint32_t build_trade(void* buf, uint64_t seq)
+  {
+    auto& trade = *reinterpret_cast<msg::Trade*>(buf);
+    const auto exchange_ts_ns = util::now_ns();
+
+    trade.trade_id = 100000 + seq;
+    trade.price_ticks = 6'500'000 + (seq % 500) * 50;
+    trade.quantity_lots = 1 + (seq % 100) * 10;
+
+    compact_trade_state.cumulative_quantity_lots += trade.quantity_lots;
+    compact_trade_state.cumulative_notional_tick_lots += (static_cast<uint64_t>(trade.price_ticks) * trade.quantity_lots);
+    compact_trade_state.cumulative_trade_count++;
+
+    trade.cumulative_quantity_lots = compact_trade_state.cumulative_quantity_lots;
+    trade.cumulative_notional_tick_lots = compact_trade_state.cumulative_notional_tick_lots;
+    trade.cumulative_trade_count = compact_trade_state.cumulative_trade_count;
+
+    uint8_t flags{};
+    flags |= static_cast<uint8_t>((seq % 4) << msg::kTickDirectionShift);
+    if (seq & 1)
+    {
+      flags |= static_cast<uint8_t>(msg::kFlagAggressorSell);
+    }
+
+    fill_header(trade.header, seq, msg::Type::Trade, flags, exchange_ts_ns);
+
+    return sizeof(msg::Trade);
+  }
+
+  uint32_t build_bbo(void* buf, uint64_t seq)
+  {
+    auto& bbo = *reinterpret_cast<msg::Bbo*>(buf);
+    const auto exchange_ts_ns = util::now_ns();
+
+    const uint32_t mid_price_ticks = 6'500'000 + static_cast<uint32_t>(seq % 500) * 50;
+    bbo.update_id = 900'000 + seq;
+    bbo.bid_price_ticks = mid_price_ticks - 50;
+    bbo.spread_ticks = 100;
+    bbo.bid_size_lots = static_cast<uint16_t>(1500 + (seq % 50) * 100);
+    bbo.ask_size_lots = static_cast<uint16_t>(1500 + ((seq + 7) % 50) * 100);
+    bbo.bid_order_count = static_cast<uint16_t>(3 + (seq % 10));
+    bbo.ask_order_count = static_cast<uint16_t>(3 + ((seq + 3) % 10));
+    bbo.reserved = 0;
+
+    fill_header(bbo.header, seq, msg::Type::Bbo, 0, exchange_ts_ns);
+
+    return sizeof(msg::Bbo);
+  }
+
+  uint32_t build_book(void* buf, uint64_t seq)
+  {
+    auto& book = *reinterpret_cast<msg::OrderBook*>(buf);
+    const auto exchange_ts_ns = util::now_ns();
+
+    const uint32_t mid_price_ticks = 6'500'000 + (seq % 500) * 50;
+    book.update_id = 900'000 + seq;
+    book.bids.top_price_ticks = mid_price_ticks - 50;
+    book.asks.top_price_ticks = mid_price_ticks + 50;
+
+    for (uint32_t i = 0; i < msg::kBookDepth; ++i)
+    {
+      if (i > 0)
+      {
+        const auto offset = static_cast<uint16_t>(i * 100);
+        book.bids.price_offset_ticks[i - 1] = offset;
+        book.asks.price_offset_ticks[i - 1] = offset;
+      }
+
+      book.bids.size_lots[i] = static_cast<uint16_t>(1000 + ((seq + i) % 40) * 100);
+      book.bids.order_count[i] = static_cast<uint16_t>(2 + (seq + i) % 8);
+      book.asks.size_lots[i] = static_cast<uint16_t>(1000 + ((seq + i + 5) % 40) * 100);
+      book.asks.order_count[i] = static_cast<uint16_t>(2 + (seq + i + 5) % 8);
+    }
+    fill_header(book.header, seq, msg::Type::OrderBook, msg::kFlagSnapshot, exchange_ts_ns);
+
+    return sizeof(msg::OrderBook);
+  }
+#else
 
 void set_str(char* dst, uint32_t cap, const char* src) {
   std::strncpy(dst, src, cap);
@@ -165,6 +265,8 @@ uint32_t build_book(void* buf, uint64_t seq) {
   fill_header(m.header, seq, msg::Type::OrderBook, sizeof(msg::OrderBook));
   return sizeof(msg::OrderBook);
 }
+
+#endif
 
 uint32_t build(Kind kind, uint64_t seq, void* buf) {
   Kind k = kind;
