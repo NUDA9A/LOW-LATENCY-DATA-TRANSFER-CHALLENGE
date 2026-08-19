@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+set(LLDT_MESSAGE_PROFILE "raw" CACHE STRING "LLDT message profile (raw/compact)")
+
 include(cmake/ProjectWarnings.cmake)
 include(cmake/DPDK.cmake)
 
@@ -22,6 +24,13 @@ lldt_enable_project_warnings(lldt_sender)
 target_link_libraries(lldt_sender PRIVATE lldt_sender_core)
 
 add_library(lldt_harness_headers INTERFACE)
+
+if("${LLDT_MESSAGE_PROFILE}" STREQUAL "compact")
+    target_compile_definitions(lldt_harness_headers INTERFACE LLDT_MESSAGE_PROFILE_COMPACT=1)
+elseif("${LLDT_MESSAGE_PROFILE}" STREQUAL "raw")
+else()
+    message(FATAL_ERROR "Invalid LLDT_MESSAGE_PROFILE value: '${LLDT_MESSAGE_PROFILE}'")
+endif()
 
 target_include_directories(lldt_harness_headers INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/harness/include/>)
 
