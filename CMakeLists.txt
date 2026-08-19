@@ -11,18 +11,6 @@ set(LLDT_MESSAGE_PROFILE "raw" CACHE STRING "LLDT message profile (raw/compact)"
 include(cmake/ProjectWarnings.cmake)
 include(cmake/DPDK.cmake)
 
-add_library(lldt_sender_core STATIC src/config.cpp src/sender_shm_reader.cpp src/raw_data_packet_builder.cpp)
-
-target_include_directories(lldt_sender_core PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
-
-lldt_enable_project_warnings(lldt_sender_core)
-
-add_executable(lldt_sender src/sender_main.cpp src/dpdk/ena_port_info.cpp src/dpdk/ena_tx_port.cpp src/dpdk/data_packet_materializer.cpp)
-
-lldt_enable_project_warnings(lldt_sender)
-
-target_link_libraries(lldt_sender PRIVATE lldt_sender_core)
-
 add_library(lldt_harness_headers INTERFACE)
 
 if("${LLDT_MESSAGE_PROFILE}" STREQUAL "compact")
@@ -34,8 +22,22 @@ endif()
 
 target_include_directories(lldt_harness_headers INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/harness/include/>)
 
-target_link_libraries(lldt_sender_core PUBLIC lldt_harness_headers)
-target_link_libraries(lldt_sender PRIVATE lldt_harness_headers DPDK::DPDK)
+add_library(lldt_common STATIC src/config.cpp src/dpdk/ena_port_info.cpp)
+
+target_include_directories(lldt_common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
+
+lldt_enable_project_warnings(lldt_common)
+
+target_link_libraries(lldt_common PUBLIC DPDK::DPDK)
+
+add_executable(lldt_sender src/sender_main.cpp src/sender_shm_reader.cpp src/raw_data_packet_builder.cpp src/dpdk/ena_tx_port.cpp src/dpdk/data_packet_materializer.cpp)
+add_executable(lldt_receiver src/receiver_main.cpp)
+
+lldt_enable_project_warnings(lldt_sender)
+lldt_enable_project_warnings(lldt_receiver)
+
+target_link_libraries(lldt_sender PRIVATE lldt_common lldt_harness_headers DPDK::DPDK)
+target_link_libraries(lldt_receiver PRIVATE lldt_common lldt_harness_headers DPDK::DPDK)
 
 include(CTest)
 
