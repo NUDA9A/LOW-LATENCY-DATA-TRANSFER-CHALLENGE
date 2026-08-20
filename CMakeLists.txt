@@ -41,6 +41,7 @@ add_executable(lldt_receiver
         src/receiver_main.cpp
         src/dpdk/ena_rx_port.cpp
         src/dpdk/ingress_packet_parser.cpp
+        src/receiver_shm_writer.cpp
 )
 
 lldt_enable_project_warnings(lldt_sender)
