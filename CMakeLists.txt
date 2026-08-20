@@ -30,8 +30,18 @@ lldt_enable_project_warnings(lldt_common)
 
 target_link_libraries(lldt_common PUBLIC DPDK::DPDK)
 
-add_executable(lldt_sender src/sender_main.cpp src/sender_shm_reader.cpp src/raw_data_packet_builder.cpp src/dpdk/ena_tx_port.cpp src/dpdk/data_packet_materializer.cpp)
-add_executable(lldt_receiver src/receiver_main.cpp src/dpdk/ena_rx_port.cpp)
+add_executable(lldt_sender
+        src/sender_main.cpp
+        src/sender_shm_reader.cpp
+        src/raw_data_packet_builder.cpp
+        src/dpdk/ena_tx_port.cpp
+        src/dpdk/data_packet_materializer.cpp
+)
+add_executable(lldt_receiver
+        src/receiver_main.cpp
+        src/dpdk/ena_rx_port.cpp
+        src/dpdk/ingress_packet_parser.cpp
+)
 
 lldt_enable_project_warnings(lldt_sender)
 lldt_enable_project_warnings(lldt_receiver)
