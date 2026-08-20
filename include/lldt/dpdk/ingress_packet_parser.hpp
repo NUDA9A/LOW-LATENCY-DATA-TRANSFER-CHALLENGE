@@ -2,8 +2,10 @@
 
 
 #include <lldt/config.hpp>
+#include <lldt/canonical_data_packet_view.hpp>
 
 #include <cstddef>
+#include <optional>
 
 #include <rte_mbuf.h>
 #include <rte_ether.h>
@@ -33,4 +35,6 @@ namespace transport
     };
 
     IngressPacketParseResult parse_ingress_packet(rte_mbuf* mbuf, const EndpointConfig& config) noexcept;
+
+    std::optional<CanonicalDataPacketView> try_parse_canonical_data_packet(const std::byte* data, std::size_t packet_size) noexcept;
 }
