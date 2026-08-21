@@ -138,7 +138,6 @@ namespace transport
         bool dataPortFlag = false;
         bool controlPortFlag = false;
         bool nextHopMacFlag = false;
-        bool observabilityFlag = false;
 
         for (int i = 1; i < argc; ++i)
         {
@@ -156,7 +155,6 @@ namespace transport
                                 "--data-port <port>\n"
                                 "--control-port <port>\n"
                                 "--next-hop-mac <xx:xx:xx:xx:xx:xx>\n"
-                                "--observability minimal|performance|diagnostic\n"
                                 "[--batching]\n");
                     return std::nullopt;
                 }
@@ -237,40 +235,6 @@ namespace transport
                     return std::nullopt;
                 }
             }
-            else if (equals_ignore_case(arg, "--observability"))
-            {
-                if (observabilityFlag)
-                {
-                    std::fprintf(stderr, "[ERROR]: --observability flag already set.\n");
-                    return std::nullopt;
-                }
-
-                const auto observabilityArgOpt = next();
-                if (!observabilityArgOpt)
-                {
-                    return std::nullopt;
-                }
-
-                if (equals_ignore_case(*observabilityArgOpt, "minimal", true))
-                {
-                    config.observability = ObservabilityMode::Minimal;
-                }
-                else if (equals_ignore_case(*observabilityArgOpt, "performance", true))
-                {
-                    config.observability = ObservabilityMode::Performance;
-                }
-                else if (equals_ignore_case(*observabilityArgOpt, "diagnostic", true))
-                {
-                    config.observability = ObservabilityMode::Diagnostic;
-                }
-                else
-                {
-                    std::fprintf(stderr, "[ERROR]: Invalid observability mode: %s.\n", observabilityArgOpt->c_str());
-                    return std::nullopt;
-                }
-
-                observabilityFlag = true;
-            }
             else if (equals_ignore_case(arg, "--next-hop-mac"))
             {
                 if (nextHopMacFlag)
@@ -347,7 +311,7 @@ namespace transport
             }
         }
 
-        if (!shmFlag || !slotsFlag || !localIpFlag || !peerIpFlag || !dataPortFlag || !controlPortFlag || !nextHopMacFlag || !observabilityFlag)
+        if (!shmFlag || !slotsFlag || !localIpFlag || !peerIpFlag || !dataPortFlag || !controlPortFlag || !nextHopMacFlag)
         {
             std::fprintf(stderr, "[ERROR]: Usage: ./executable\n"
                                 "<EAL args>\n"
@@ -359,7 +323,6 @@ namespace transport
                                 "--data-port <port>\n"
                                 "--control-port <port>\n"
                                 "--next-hop-mac <xx:xx:xx:xx:xx:xx>\n"
-                                "--observability minimal|performance|diagnostic\n"
                                 "[--batching]\n");
             return std::nullopt;
         }
