@@ -136,7 +136,6 @@ namespace transport
         bool localIpFlag = false;
         bool peerIpFlag = false;
         bool dataPortFlag = false;
-        bool controlPortFlag = false;
         bool nextHopMacFlag = false;
 
         for (int i = 1; i < argc; ++i)
@@ -153,7 +152,6 @@ namespace transport
                                 "--local-ip <IPv4>\n"
                                 "--peer-ip <IPv4>\n"
                                 "--data-port <port>\n"
-                                "--control-port <port>\n"
                                 "--next-hop-mac <xx:xx:xx:xx:xx:xx>\n"
                                 "[--batching]\n");
                     return std::nullopt;
@@ -224,13 +222,6 @@ namespace transport
             else if (equals_ignore_case(arg, "--data-port"))
             {
                 if (!parsePortArg(dataPortFlag, "data-port", config.data_port, next))
-                {
-                    return std::nullopt;
-                }
-            }
-            else if (equals_ignore_case(arg, "--control-port"))
-            {
-                if (!parsePortArg(controlPortFlag, "control-port", config.control_port, next))
                 {
                     return std::nullopt;
                 }
@@ -311,7 +302,7 @@ namespace transport
             }
         }
 
-        if (!shmFlag || !slotsFlag || !localIpFlag || !peerIpFlag || !dataPortFlag || !controlPortFlag || !nextHopMacFlag)
+        if (!shmFlag || !slotsFlag || !localIpFlag || !peerIpFlag || !dataPortFlag || !nextHopMacFlag)
         {
             std::fprintf(stderr, "[ERROR]: Usage: ./executable\n"
                                 "<EAL args>\n"
@@ -321,15 +312,8 @@ namespace transport
                                 "--local-ip <IPv4>\n"
                                 "--peer-ip <IPv4>\n"
                                 "--data-port <port>\n"
-                                "--control-port <port>\n"
                                 "--next-hop-mac <xx:xx:xx:xx:xx:xx>\n"
                                 "[--batching]\n");
-            return std::nullopt;
-        }
-
-        if (config.data_port == config.control_port)
-        {
-            std::fprintf(stderr, "[ERROR]: Data-port == control-port.\n");
             return std::nullopt;
         }
 
