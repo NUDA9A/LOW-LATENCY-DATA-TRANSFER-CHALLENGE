@@ -5,14 +5,11 @@
 #include <lldt/dpdk/data_packet_materializer.hpp>
 #include <lldt/raw_data_packet_builder.hpp>
 
-
 #include <rte_eal.h>
 #include <rte_errno.h>
 #include <rte_ether.h>
 #include <rte_mbuf.h>
 #include <rte_ethdev.h>
-
-#include <sys/random.h>
 
 #include <cstdio>
 #include <cstring>
@@ -125,16 +122,6 @@ namespace
             configOpt->data_port
         );
 
-        std::uint64_t session_id{};
-        while (!session_id)
-        {
-            if (getrandom(&session_id, sizeof(session_id), 0) != static_cast<ssize_t>(sizeof(session_id)))
-            {
-                std::fprintf(stderr, "[ERROR]: Could not generate valid session_id.\n");
-                return 1;
-            }
-        }
-
         std::uint64_t next_data_seq{};
 
         SenderDataCounters data_counters{};
@@ -192,7 +179,6 @@ namespace
             transport::RawDataPacketBuilder builder{
                 canonical_output,
                 dpdk::DATA_PACKET_CANONICAL_CAPACITY,
-                session_id,
                 next_data_seq,
                 first_frame
             };

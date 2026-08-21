@@ -34,7 +34,6 @@ namespace
         std::uint64_t invalid_checksums{};
         std::uint64_t invalid_lldt_packets{};
 
-        std::uint64_t foreign_session_packets{};
         std::uint64_t stale_data_packets{};
         std::uint64_t data_gap_events{};
         std::uint64_t data_packets_missing{};
@@ -59,7 +58,6 @@ namespace
         std::fprintf(stdout, "Total rejected packets:\t%lu\n", counters.ingress_rejected);
         std::fprintf(stdout, "Total packets with invalid checksums:\t%lu\n", counters.invalid_checksums);
         std::fprintf(stdout, "Total invalid lldt packets:\t%lu\n", counters.invalid_lldt_packets);
-        std::fprintf(stdout, "Total foreign session packets:\t%lu\n", counters.foreign_session_packets);
         std::fprintf(stdout, "Total stale packets:\t%lu\n", counters.stale_data_packets);
         std::fprintf(stdout, "Total gaps:\t%lu\n", counters.data_gap_events);
         std::fprintf(stdout, "Total missing packets:\t%lu\n", counters.data_packets_missing);
@@ -116,8 +114,7 @@ namespace
         std::array<rte_mbuf*, RX_BURST_SIZE> rx_mbufs{};
         ReceiverCounters counters{};
 
-        bool session_established{false};
-        std::uint64_t active_session_id{};
+        bool data_seq_established{false};
         std::uint64_t next_data_seq{};
 
         while (!stop_requested)
@@ -157,17 +154,10 @@ namespace
                     continue;
                 }
 
-                if (!session_established)
+                if (!data_seq_established)
                 {
-                    active_session_id = packet->session_id;
                     next_data_seq = packet->data_seq;
-                    session_established = true;
-                }
-
-                if (packet->session_id != active_session_id)
-                {
-                    ++counters.foreign_session_packets;
-                    continue;
+                    data_seq_established = true;
                 }
 
                 if (packet->data_seq < next_data_seq)
@@ -188,7 +178,7 @@ namespace
 
                 ++counters.data_packets_accepted;
                 counters.frames_published += packet->record_count;
-                counters.frame_bytes_published += packet->packet_size - 40;
+                counters.frame_bytes_published += packet->packet_size - 22;
             }
 
             rte_pktmbuf_free_bulk(rx_mbufs.data(), received);

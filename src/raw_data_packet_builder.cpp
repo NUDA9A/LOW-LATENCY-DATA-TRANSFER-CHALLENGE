@@ -3,7 +3,6 @@
 
 #include <cstring>
 
-#include "message.h"
 
 namespace transport
 {
@@ -12,17 +11,13 @@ namespace transport
     RawDataPacketBuilder::RawDataPacketBuilder(
         std::byte* output,
         const std::size_t capacity,
-        const std::uint64_t session_id,
         const std::uint64_t data_seq,
         const ValidatedSourceFrameView& first_frame
         ) noexcept :
     output_(output),
     write_pos_(output + DATA_HEADER_SIZE + first_frame.frame_size),
     remaining_payload_capacity_(capacity - DATA_HEADER_SIZE - first_frame.frame_size),
-    session_id_(session_id),
     data_seq_(data_seq),
-    first_src_seq_(first_frame.source_seq_id),
-    payload_length_(first_frame.frame_size),
     record_count_(1)
     {
         std::memcpy(output + DATA_HEADER_SIZE, first_frame.data, first_frame.frame_size);
@@ -38,7 +33,6 @@ namespace transport
         std::memcpy(write_pos_, frame.data, frame.frame_size);
         write_pos_ += frame.frame_size;
         remaining_payload_capacity_ -= frame.frame_size;
-        payload_length_ += frame.frame_size;
         record_count_++;
 
         return RawDataPacketBuildStatus::Ok;
@@ -46,10 +40,7 @@ namespace transport
 
     void RawDataPacketBuilder::writeLLDTHeader(
         std::byte* output,
-        const std::uint64_t session_id,
         const std::uint64_t data_seq,
-        const std::uint64_t first_src_seq,
-        const std::uint32_t payload_length,
         const std::uint16_t record_count) noexcept
     {
         auto offset = writeSizeofTBE(output, MAGIC_LLDT);
@@ -57,37 +48,29 @@ namespace transport
         constexpr std::uint8_t protocol_version = 1;
         offset += writeSizeofTBE(output + offset, protocol_version);
 
-        constexpr std::uint8_t packet_type = 1; // Data
-        offset += writeSizeofTBE(output + offset, packet_type);
-
         offset += writeSizeofTBE(output + offset, DATA_HEADER_SIZE);
-
-        offset += writeSizeofTBE(output + offset, session_id);
 
         offset += writeSizeofTBE(output + offset, data_seq);
 
-        offset += writeSizeofTBE(output + offset, first_src_seq);
-
-        offset += writeSizeofTBE(output + offset, payload_length);
-
         offset += writeSizeofTBE(output + offset, record_count); // amount of source frames into payload of 1 Data-packet
 
-        offset += writeSizeofTBE(output + offset, msg::kCodecId);
-
-        constexpr std::uint8_t flags = 0;
-        writeSizeofTBE(output + offset, flags);
+        // padding
+        std::uint8_t padding_byte{};
+        for (std::size_t i = 0; i < 5; ++i)
+        {
+            offset += writeSizeofTBE(output + offset, padding_byte);
+        }
     }
 
     CanonicalDataPacketView RawDataPacketBuilder::finalize() noexcept
     {
-        writeLLDTHeader(output_, session_id_, data_seq_, first_src_seq_, payload_length_, record_count_);
+        writeLLDTHeader(output_, data_seq_, record_count_);
+        const std::size_t packet_size = write_pos_ - output_;
 
         return CanonicalDataPacketView{
             output_,
-            DATA_HEADER_SIZE + payload_length_,
-            session_id_,
+            packet_size,
             data_seq_,
-            first_src_seq_,
             record_count_
         };
     }
@@ -95,7 +78,6 @@ namespace transport
     RawDataPacketBuildResult RawDataPacketBuilder::build_canonical(
         std::byte* output,
         const std::size_t capacity,
-        const std::uint64_t session_id,
         const std::uint64_t data_seq,
         const ValidatedSourceFrameView& frame_view) noexcept
     {
@@ -107,7 +89,6 @@ namespace transport
         RawDataPacketBuilder builder{
             output,
             capacity,
-            session_id,
             data_seq,
             frame_view
         };

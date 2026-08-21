@@ -21,7 +21,7 @@ namespace transport
 
     void ReceiverShmWriter::write(const CanonicalDataPacketView& packet) noexcept
     {
-        const std::byte* frame = packet.data + 40;
+        const std::byte* frame = packet.data + 22;
 
         for (std::size_t i = 0; i < packet.record_count; ++i)
         {

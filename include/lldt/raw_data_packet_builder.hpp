@@ -24,12 +24,11 @@ namespace transport
     class RawDataPacketBuilder
     {
     public:
-        static constexpr std::uint16_t DATA_HEADER_SIZE = 40;
+        static constexpr std::uint16_t DATA_HEADER_SIZE = 22;
 
         RawDataPacketBuilder(
             std::byte* output,
             std::size_t capacity,
-            std::uint64_t session_id,
             std::uint64_t data_seq,
             const ValidatedSourceFrameView& first_frame) noexcept;
 
@@ -40,7 +39,6 @@ namespace transport
         static RawDataPacketBuildResult build_canonical(
             std::byte* output,
             std::size_t capacity,
-            std::uint64_t session_id,
             std::uint64_t data_seq,
             const ValidatedSourceFrameView& frame_view) noexcept;
     private:
@@ -58,21 +56,15 @@ namespace transport
 
         static void writeLLDTHeader(
             std::byte* output,
-            std::uint64_t session_id,
             std::uint64_t data_seq,
-            std::uint64_t first_src_seq,
-            std::uint32_t payload_length,
             std::uint16_t record_count) noexcept;
 
         std::byte* output_;
         std::byte* write_pos_;
         std::size_t remaining_payload_capacity_;
 
-        std::uint64_t session_id_;
         std::uint64_t data_seq_;
-        std::uint64_t first_src_seq_;
 
-        std::uint32_t payload_length_;
         std::uint16_t record_count_;
     };
 }

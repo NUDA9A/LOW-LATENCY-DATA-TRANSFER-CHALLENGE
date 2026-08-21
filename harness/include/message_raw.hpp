@@ -13,7 +13,6 @@ inline constexpr uint32_t kSymbolLen = 16;
 inline constexpr uint32_t kVenueLen = 16;
 inline constexpr uint32_t kCurrencyLen = 8;
 inline constexpr uint32_t kBookDepth = 5;
-inline constexpr uint8_t kCodecId = 1; // Raw codec ID
 inline constexpr char kProfileName[] = "raw";
 
 enum class Type : uint16_t {

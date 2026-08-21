@@ -55,7 +55,7 @@ namespace transport
 
     std::optional<CanonicalDataPacketView> try_parse_canonical_data_packet(const std::byte* data, const std::size_t packet_size) noexcept
     {
-        if (packet_size < 40)
+        if (packet_size < 22)
         {
             return std::nullopt;
         }
@@ -63,8 +63,7 @@ namespace transport
         constexpr std::uint8_t DATA_PREFIX[] = {
             0x4c, 0x4c, 0x44, 0x54, // LLDT
             0x01,                   // version
-            0x01,                   // Data
-            0x00, 0x28              // header size = 40
+            0x00, 0x16,              // header size = 22
         };
 
         if (std::memcmp(data, DATA_PREFIX, sizeof(DATA_PREFIX)) != 0)
@@ -72,24 +71,16 @@ namespace transport
             return std::nullopt;
         }
 
-        rte_be64_t session_id{};
-        std::memcpy(&session_id, data + 8, sizeof(session_id));
-
         rte_be64_t data_seq{};
-        std::memcpy(&data_seq, data + 16, sizeof(data_seq));
-
-        rte_be64_t first_src_seq{};
-        std::memcpy(&first_src_seq, data + 24, sizeof(first_src_seq));
+        std::memcpy(&data_seq, data + 7, sizeof(data_seq));
 
         rte_be16_t record_count{};
-        std::memcpy(&record_count, data + 36, sizeof(record_count));
+        std::memcpy(&record_count, data + 15, sizeof(record_count));
 
         return CanonicalDataPacketView{
             data,
             packet_size,
-            rte_be_to_cpu_64(session_id),
             rte_be_to_cpu_64(data_seq),
-            rte_be_to_cpu_64(first_src_seq),
             rte_be_to_cpu_16(record_count)
         };
     }

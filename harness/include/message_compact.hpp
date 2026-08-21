@@ -53,7 +53,6 @@
 namespace msg {
 
 inline constexpr std::uint32_t kBookDepth = 5;
-inline constexpr std::uint8_t kCodecId = 2;
 inline constexpr char kProfileName[] = "compact";
 
 enum class Type : std::uint8_t {
@@ -183,7 +182,7 @@ constexpr std::uint64_t exchange_ts_ns(const Header& header) noexcept {
 
 inline constexpr std::uint32_t kMaxFrame = sizeof(OrderBook);
 
-// Exact sizes and prefix offsets are part of codec_id=2.  They also determine
+// Exact sizes and prefix offsets determine
 // SHM slot size and the Receiver's boundaries between batched records.
 static_assert(sizeof(Header) == 24, "Compact Header ABI changed");
 static_assert(offsetof(Header, seq_id) == 0,
