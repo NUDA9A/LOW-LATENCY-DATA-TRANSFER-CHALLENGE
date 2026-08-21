@@ -1,10 +1,4 @@
-// Consumer: reads events from the shared-memory broadcast ring, stamps a receive
-// timestamp, and computes delivery metrics (latency percentiles, drop rate) from
-// the per-message send timestamp and sequence id. Fixed measurement end of the
-// harness.
-//
-// Usage: consumer [--shm NAME] [--slots N] [--count N] [--from-edge]
-//                 [--csv FILE] [--idle-ms MS]
+#include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -17,112 +11,254 @@
 #include "shm_segment.h"
 #include "util.h"
 
-namespace {
 
-struct Config {
-  std::string shm_name = "/fanout_ring";
-  uint32_t slots = 1024;
-  uint64_t count = 0;
-  bool from_edge = false;
-  std::string csv;
-  uint64_t idle_ms = 2000;
-};
+namespace
+{
+    constexpr std::size_t DEFAULT_SAMPLE_CAPACITY = 1u << 22;
 
-Config parse_args(int argc, char** argv) {
-  Config c;
-  for (int i = 1; i < argc; ++i) {
-    std::string a = argv[i];
-    auto next = [&]() -> std::string {
-      if (i + 1 >= argc) {
-        fprintf(stderr, "missing value for %s\n", a.c_str());
-        std::exit(2);
-      }
-      return argv[++i];
+    static_assert(offsetof(msg::Header, seq_id) == 0);
+    static_assert(offsetof(msg::Header, send_ts_ns) == 8);
+
+    struct Config
+    {
+        std::string shm_name = "/fanout_ring";
+        std::uint32_t slots = 1024;
+        std::uint64_t count = 0;
+        bool from_edge = false;
+        std::string csv;
+        std::uint64_t idle_ms = 2000;
     };
-    if (a == "--shm") c.shm_name = next();
-    else if (a == "--slots") c.slots = static_cast<uint32_t>(std::stoul(next()));
-    else if (a == "--count") c.count = std::stoull(next());
-    else if (a == "--from-edge") c.from_edge = true;
-    else if (a == "--csv") c.csv = next();
-    else if (a == "--idle-ms") c.idle_ms = std::stoull(next());
-    else {
-      fprintf(stderr, "unknown arg: %s\n", a.c_str());
-      std::exit(2);
+
+    struct Framing
+    {
+        std::uint64_t seq_id;
+        std::uint64_t send_ts_ns;
+    };
+
+    Framing load_framing(const std::uint8_t* frame) noexcept
+    {
+        Framing framing{};
+
+        std::memcpy(
+            &framing.seq_id,
+            frame + offsetof(msg::Header, seq_id),
+            sizeof(framing.seq_id));
+
+        std::memcpy(
+            &framing.send_ts_ns,
+            frame + offsetof(msg::Header, send_ts_ns),
+            sizeof(framing.send_ts_ns));
+
+        return framing;
     }
-  }
-  return c;
-}
 
-void print_report(const metrics::Report& r) {
-  printf("---- delivery metrics ----\n");
-  printf("received     : %llu\n", (unsigned long long)r.received);
-  printf("expected     : %llu\n", (unsigned long long)r.expected);
-  printf("dropped      : %llu\n", (unsigned long long)r.dropped);
-  printf("drop_rate    : %.4f%%\n", r.drop_rate * 100.0);
-  printf("latency (ns) : min=%llu mean=%.0f max=%llu\n",
-         (unsigned long long)r.lat_min, r.lat_mean,
-         (unsigned long long)r.lat_max);
-  printf("  p01        : %llu\n", (unsigned long long)r.p01);
-  printf("  p50        : %llu\n", (unsigned long long)r.p50);
-  printf("  p99        : %llu\n", (unsigned long long)r.p99);
-  printf("  p99.9      : %llu\n", (unsigned long long)r.p999);
-  printf("  p99.99     : %llu\n", (unsigned long long)r.p9999);
-}
+    Config parse_args(int argc, char** argv)
+    {
+        Config config{};
 
-}  // namespace
+        for (int i = 1; i < argc; ++i)
+        {
+            std::string argument = argv[i];
 
-int main(int argc, char** argv) {
-  Config cfg = parse_args(argc, argv);
+            auto next = [&]() -> std::string
+            {
+                if (i + 1 >= argc)
+                {
+                    std::fprintf(
+                        stderr,
+                        "missing value for %s\n",
+                        argument.c_str());
 
-  shm::Segment seg =
-      shm::Segment::open(cfg.shm_name, shm::region_size(cfg.slots), /*create=*/false);
-  shm::Ring ring;
-  ring.attach(seg.base(), cfg.slots, /*init=*/false);
+                    std::exit(2);
+                }
 
-  metrics::Accumulator acc(cfg.count ? cfg.count : 1u << 20);
+                return argv[++i];
+            };
 
-  FILE* csv = nullptr;
-  if (!cfg.csv.empty()) {
-    csv = std::fopen(cfg.csv.c_str(), "w");
-    if (csv) std::fprintf(csv, "seq,latency_ns\n");
-  }
+            if (argument == "--shm")
+                config.shm_name = next();
+            else if (argument == "--slots")
+                config.slots =
+                    static_cast<std::uint32_t>(
+                        std::stoul(next()));
+            else if (argument == "--count")
+                config.count = std::stoull(next());
+            else if (argument == "--from-edge")
+                config.from_edge = true;
+            else if (argument == "--csv")
+                config.csv = next();
+            else if (argument == "--idle-ms")
+                config.idle_ms = std::stoull(next());
+            else
+            {
+                std::fprintf(
+                    stderr,
+                    "unknown arg: %s\n",
+                    argument.c_str());
 
-  uint64_t read_index = cfg.from_edge ? ring.live_edge() : 0;
-  uint64_t received = 0;
-  uint64_t lapped_events = 0;
-  const uint64_t idle_ns = cfg.idle_ms * 1000000ull;
-  uint64_t last_progress = util::now_ns();
+                std::exit(2);
+            }
+        }
 
-  uint8_t frame[shm::kFrameCap];
-  while (cfg.count == 0 || received < cfg.count) {
-    uint32_t len = 0;
-    uint64_t resume = 0;
-    auto st = ring.read(read_index, frame, &len, &resume);
-
-    if (st == shm::Ring::FrameStatus::kOk) {
-      const uint64_t recv_ts = util::now_ns();
-      const auto* hdr = reinterpret_cast<const msg::Header*>(frame);
-      const uint64_t latency =
-          recv_ts > hdr->send_ts_ns ? recv_ts - hdr->send_ts_ns : 0;
-      acc.record(hdr->seq_id, latency);
-      if (csv) std::fprintf(csv, "%llu,%llu\n",
-                            (unsigned long long)hdr->seq_id,
-                            (unsigned long long)latency);
-      ++received;
-      ++read_index;
-      last_progress = recv_ts;
-    } else if (st == shm::Ring::FrameStatus::kLapped) {
-      ++lapped_events;
-      read_index = resume;  // skip the gap; drops show up as seq gaps in metrics
-    } else {  // kEmpty
-      if (util::now_ns() - last_progress > idle_ns) break;  // producer done
+        return config;
     }
-  }
 
-  if (csv) std::fclose(csv);
+    void print_report(const metrics::Report& report)
+    {
+        std::printf("---- delivery metrics ----\n");
+        std::printf(
+            "received     : %llu\n",
+            static_cast<unsigned long long>(report.received));
+        std::printf(
+            "expected     : %llu\n",
+            static_cast<unsigned long long>(report.expected));
+        std::printf(
+            "dropped      : %llu\n",
+            static_cast<unsigned long long>(report.dropped));
+        std::printf(
+            "drop_rate    : %.4f%%\n",
+            report.drop_rate * 100.0);
 
-  fprintf(stderr, "consumer: lapped %llu times\n",
-          (unsigned long long)lapped_events);
-  print_report(acc.report());
-  return 0;
+        if (report.overflow != 0)
+        {
+            std::printf(
+                "NOT STORED   : %llu\n",
+                static_cast<unsigned long long>(report.overflow));
+        }
+
+        std::printf(
+            "latency (ns) : min=%llu mean=%.0f max=%llu\n",
+            static_cast<unsigned long long>(report.lat_min),
+            report.lat_mean,
+            static_cast<unsigned long long>(report.lat_max));
+
+        std::printf(
+            "  p01        : %llu\n",
+            static_cast<unsigned long long>(report.p01));
+        std::printf(
+            "  p50        : %llu\n",
+            static_cast<unsigned long long>(report.p50));
+        std::printf(
+            "  p99        : %llu\n",
+            static_cast<unsigned long long>(report.p99));
+        std::printf(
+            "  p99.9      : %llu\n",
+            static_cast<unsigned long long>(report.p999));
+        std::printf(
+            "  p99.99     : %llu\n",
+            static_cast<unsigned long long>(report.p9999));
+    }
+
+} // namespace
+
+
+int main(int argc, char** argv)
+{
+    const Config config = parse_args(argc, argv);
+
+    shm::Segment segment =
+        shm::Segment::open(
+            config.shm_name,
+            shm::region_size(config.slots),
+            false);
+
+    shm::Ring ring;
+    ring.attach(segment.base(), config.slots, false);
+
+    const std::size_t sample_capacity =
+        config.count != 0
+            ? static_cast<std::size_t>(config.count)
+            : DEFAULT_SAMPLE_CAPACITY;
+
+    metrics::Accumulator accumulator{sample_capacity};
+
+    std::uint64_t read_index =
+        config.from_edge
+            ? ring.live_edge()
+            : 0;
+
+    std::uint64_t received{};
+    std::uint64_t lapped_events{};
+
+    const std::uint64_t idle_ns =
+        config.idle_ms * 1'000'000ull;
+
+    std::uint64_t last_progress = util::now_ns();
+
+    alignas(64) std::uint8_t frame[shm::kFrameCap];
+
+    while (config.count == 0 || received < config.count)
+    {
+        std::uint32_t length{};
+        std::uint64_t resume{};
+
+        const auto status =
+            ring.read(
+                read_index,
+                frame,
+                &length,
+                &resume);
+
+        if (status == shm::Ring::FrameStatus::kOk)
+        {
+            const std::uint64_t receive_timestamp =
+                util::now_ns();
+
+            const Framing framing = load_framing(frame);
+
+            const std::uint64_t latency =
+                receive_timestamp > framing.send_ts_ns
+                    ? receive_timestamp - framing.send_ts_ns
+                    : 0;
+
+            accumulator.record(
+                framing.seq_id,
+                latency);
+
+            ++received;
+            ++read_index;
+
+            last_progress = receive_timestamp;
+        }
+        else if (status == shm::Ring::FrameStatus::kLapped)
+        {
+            ++lapped_events;
+            read_index = resume;
+        }
+        else
+        {
+            if (util::now_ns() - last_progress > idle_ns)
+                break;
+        }
+    }
+
+    std::fprintf(
+        stderr,
+        "consumer: lapped %llu times\n",
+        static_cast<unsigned long long>(lapped_events));
+
+    const metrics::Report report = accumulator.report();
+    print_report(report);
+
+    if (!config.csv.empty() &&
+        !accumulator.dump_csv(config.csv.c_str()))
+    {
+        std::fprintf(
+            stderr,
+            "consumer: failed to write %s\n",
+            config.csv.c_str());
+
+        return 1;
+    }
+
+    if (accumulator.overflow() != 0)
+    {
+        std::fprintf(
+            stderr,
+            "consumer: sample buffer overflow; percentile result is incomplete\n");
+
+        return 1;
+    }
+
+    return 0;
 }
