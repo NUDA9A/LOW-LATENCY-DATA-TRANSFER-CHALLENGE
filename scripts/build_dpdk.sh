@@ -108,7 +108,7 @@ if [[ ! -f "${BUILD_PATH}/build.ninja" ]]; then
     --wrap-mode=nodownload \
     -Db_lto=true \
     -Dplatform=native \
-    -Denable_drivers=net/ena \
+    -Denable_drivers=net/ena,net/virtio \
     -Denable_libs=timer \
     "-Ddisable_apps=*" \
     -Dtests=false \

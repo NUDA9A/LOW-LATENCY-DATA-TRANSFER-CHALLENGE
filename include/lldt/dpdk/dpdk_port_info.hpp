@@ -10,7 +10,7 @@
 
 namespace dpdk
 {
-    struct EnaPortInfo
+    struct DpdkPortInfo
     {
         std::uint16_t port_id{};
         rte_eth_dev_info eth_dev_info{};
@@ -18,5 +18,5 @@ namespace dpdk
         int socket_id{};
     };
 
-    std::optional<EnaPortInfo> try_get_ena_port_info() noexcept;
+    std::optional<DpdkPortInfo> try_get_dpdk_port_info() noexcept;
 }

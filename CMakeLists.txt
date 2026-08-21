@@ -22,7 +22,7 @@ endif()
 
 target_include_directories(lldt_harness_headers INTERFACE $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/harness/include/>)
 
-add_library(lldt_common STATIC src/config.cpp src/dpdk/ena_port_info.cpp)
+add_library(lldt_common STATIC src/config.cpp src/dpdk/dpdk_port_info.cpp)
 
 target_include_directories(lldt_common PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include/>)
 
@@ -34,12 +34,12 @@ add_executable(lldt_sender
         src/sender_main.cpp
         src/sender_shm_reader.cpp
         src/raw_data_packet_builder.cpp
-        src/dpdk/ena_tx_port.cpp
+        src/dpdk/dpdk_tx_port.cpp
         src/dpdk/data_packet_materializer.cpp
 )
 add_executable(lldt_receiver
         src/receiver_main.cpp
-        src/dpdk/ena_rx_port.cpp
+        src/dpdk/dpdk_rx_port.cpp
         src/dpdk/ingress_packet_parser.cpp
         src/receiver_shm_writer.cpp
 )

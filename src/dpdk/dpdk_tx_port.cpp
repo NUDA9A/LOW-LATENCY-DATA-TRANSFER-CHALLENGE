@@ -1,4 +1,4 @@
-#include <lldt/dpdk/ena_tx_port.hpp>
+#include <lldt/dpdk/dpdk_tx_port.hpp>
 
 
 #include <rte_ethdev.h>
@@ -21,19 +21,25 @@ namespace
 
 namespace dpdk
 {
-    EnaTxPort::EnaTxPort(const std::uint16_t port_id) noexcept : port_id_(port_id) {}
+    DpdkTxPort::DpdkTxPort(const std::uint16_t port_id) noexcept : port_id_(port_id) {}
 
-    EnaTxPort::~EnaTxPort()
+    DpdkTxPort::~DpdkTxPort()
     {
         rte_eth_dev_stop(port_id_);
         rte_eth_dev_close(port_id_);
         rte_mempool_free(tx_mbuf_pool_);
     }
 
-    bool EnaTxPort::try_initialize(const int socket_id) noexcept
+    bool DpdkTxPort::try_initialize(const int socket_id, const std::uint64_t tx_offload_capa) noexcept
     {
         rte_eth_conf cfg{};
+
+        if ((tx_offload_capa & REQUIRED_TX_OFFLOADS) != REQUIRED_TX_OFFLOADS)
+        {
+            return false;
+        }
         cfg.txmode.offloads |= REQUIRED_TX_OFFLOADS;
+
         if (rte_eth_dev_configure(port_id_, RX_QUEUE_NUMBER, TX_QUEUE_NUMBER, &cfg) != 0)
         {
             return false;
@@ -82,7 +88,7 @@ namespace dpdk
         return rte_eth_dev_start(port_id_) == 0;
     }
 
-    rte_mempool* EnaTxPort::get_tx_mbuf_pool() const noexcept
+    rte_mempool* DpdkTxPort::get_tx_mbuf_pool() const noexcept
     {
         return tx_mbuf_pool_;
     }

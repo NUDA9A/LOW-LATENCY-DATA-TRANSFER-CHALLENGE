@@ -1,4 +1,4 @@
-#include <lldt/dpdk/ena_rx_port.hpp>
+#include <lldt/dpdk/dpdk_rx_port.hpp>
 
 
 #include <rte_ethdev.h>
@@ -23,20 +23,26 @@ namespace
 
 namespace dpdk
 {
-    EnaRxPort::EnaRxPort(const std::uint16_t port_id) noexcept : port_id_(port_id) {}
+    DpdkRxPort::DpdkRxPort(const std::uint16_t port_id) noexcept : port_id_(port_id) {}
 
-    EnaRxPort::~EnaRxPort()
+    DpdkRxPort::~DpdkRxPort()
     {
         rte_eth_dev_stop(port_id_);
         rte_eth_dev_close(port_id_);
         rte_mempool_free(rx_mbuf_pool_);
     }
 
-    bool EnaRxPort::try_initialize(const int socket_id) noexcept
+    bool DpdkRxPort::try_initialize(const int socket_id, const std::uint64_t rx_offload_capa) noexcept
     {
         rte_eth_conf cfg{};
         cfg.rxmode.mtu = MTU;
+
+        if ((rx_offload_capa & REQUIRED_RX_OFFLOADS) != REQUIRED_RX_OFFLOADS)
+        {
+            return false;
+        }
         cfg.rxmode.offloads |= REQUIRED_RX_OFFLOADS;
+
         if (rte_eth_dev_configure(port_id_, RX_QUEUE_NUMBER, TX_QUEUE_NUMBER, &cfg) != 0)
         {
             return false;
@@ -85,7 +91,7 @@ namespace dpdk
         return rte_eth_dev_start(port_id_) == 0;
     }
 
-    rte_mempool* EnaRxPort::get_rx_mbuf_pool() const noexcept
+    rte_mempool* DpdkRxPort::get_rx_mbuf_pool() const noexcept
     {
         return rx_mbuf_pool_;
     }

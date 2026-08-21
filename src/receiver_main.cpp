@@ -1,6 +1,6 @@
 #include <lldt/config.hpp>
-#include <lldt/dpdk/ena_port_info.hpp>
-#include <lldt/dpdk/ena_rx_port.hpp>
+#include <lldt/dpdk/dpdk_port_info.hpp>
+#include <lldt/dpdk/dpdk_rx_port.hpp>
 #include <lldt/receiver_shm_writer.hpp>
 #include <lldt/dpdk/ingress_packet_parser.hpp>
 
@@ -95,19 +95,19 @@ namespace
             return 1;
         }
 
-        const auto ena_port_info = dpdk::try_get_ena_port_info();
-        if (!ena_port_info)
+        const auto dpdk_port_info = dpdk::try_get_dpdk_port_info();
+        if (!dpdk_port_info)
         {
-            std::fprintf(stderr, "[ERROR]: Could not get ena_port_info.\n");
+            std::fprintf(stderr, "[ERROR]: Could not get dpdk_port_info.\n");
             return 1;
         }
 
         transport::ReceiverShmWriter writer{configOpt->shm_name, configOpt->slots};
 
-        dpdk::EnaRxPort port{ena_port_info->port_id};
-        if (!port.try_initialize(ena_port_info->socket_id))
+        dpdk::DpdkRxPort port{dpdk_port_info->port_id};
+        if (!port.try_initialize(dpdk_port_info->socket_id, dpdk_port_info->eth_dev_info.rx_offload_capa))
         {
-            std::fprintf(stderr, "[ERROR]: Could not initialize EnaRxPort.\n");
+            std::fprintf(stderr, "[ERROR]: Could not initialize DpdkRxPort.\n");
             return 1;
         }
 
@@ -119,7 +119,7 @@ namespace
 
         while (!stop_requested)
         {
-            const auto received = rte_eth_rx_burst(ena_port_info->port_id, dpdk::EnaRxPort::RX_QUEUE_ID, rx_mbufs.data(), RX_BURST_SIZE);
+            const auto received = rte_eth_rx_burst(dpdk_port_info->port_id, dpdk::DpdkRxPort::RX_QUEUE_ID, rx_mbufs.data(), RX_BURST_SIZE);
             ++counters.rx_bursts;
 
             if (received == 0)
@@ -188,7 +188,7 @@ namespace
 
         printReceiverCounters(counters);
 
-        if (rte_eth_stats_get(ena_port_info->port_id, &rte_stats) == 0)
+        if (rte_eth_stats_get(dpdk_port_info->port_id, &rte_stats) == 0)
         {
             printRteStats(rte_stats);
         } else
@@ -196,19 +196,19 @@ namespace
             std::fprintf(stderr, "[WARNING]: Could not retrieve rte_eth_stats\n");
         }
 
-        const int xstats_count = rte_eth_xstats_get_names(ena_port_info->port_id, nullptr, 0);
+        const int xstats_count = rte_eth_xstats_get_names(dpdk_port_info->port_id, nullptr, 0);
         if (xstats_count > 0)
         {
             std::vector<rte_eth_xstat_name> xstats_names(xstats_count);
             std::vector<rte_eth_xstat> xstats(xstats_count);
 
-            if (const int res = rte_eth_xstats_get_names(ena_port_info->port_id, xstats_names.data(), xstats_count); res < 0 || res != xstats_count)
+            if (const int res = rte_eth_xstats_get_names(dpdk_port_info->port_id, xstats_names.data(), xstats_count); res < 0 || res != xstats_count)
             {
                 std::fprintf(stderr, "[WARNING]: Could not retrieve xstats_names\n");
                 return 0;
             }
 
-            if (const int res = rte_eth_xstats_get(ena_port_info->port_id, xstats.data(), xstats_count); res < 0 || res != xstats_count)
+            if (const int res = rte_eth_xstats_get(dpdk_port_info->port_id, xstats.data(), xstats_count); res < 0 || res != xstats_count)
             {
                 std::fprintf(stderr, "[WARNING]: Could not retrieve xstats values\n");
                 return 0;

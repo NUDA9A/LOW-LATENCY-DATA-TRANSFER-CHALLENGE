@@ -1,6 +1,6 @@
 #include <lldt/config.hpp>
-#include <lldt/dpdk/ena_port_info.hpp>
-#include <lldt/dpdk/ena_tx_port.hpp>
+#include <lldt/dpdk/dpdk_port_info.hpp>
+#include <lldt/dpdk/dpdk_tx_port.hpp>
 #include <lldt/sender_shm_reader.hpp>
 #include <lldt/dpdk/data_packet_materializer.hpp>
 #include <lldt/raw_data_packet_builder.hpp>
@@ -95,17 +95,17 @@ namespace
             return 1;
         }
 
-        const auto ena_port_info = dpdk::try_get_ena_port_info();
-        if (!ena_port_info)
+        const auto dpdk_port_info = dpdk::try_get_dpdk_port_info();
+        if (!dpdk_port_info)
         {
-            std::fprintf(stderr, "[ERROR]: Could not get ena_port_info.\n");
+            std::fprintf(stderr, "[ERROR]: Could not get dpdk_port_info.\n");
             return 1;
         }
 
-        dpdk::EnaTxPort port{ena_port_info->port_id};
-        if (!port.try_initialize(ena_port_info->socket_id))
+        dpdk::DpdkTxPort port{dpdk_port_info->port_id};
+        if (!port.try_initialize(dpdk_port_info->socket_id, dpdk_port_info->eth_dev_info.tx_offload_capa))
         {
-            std::fprintf(stderr, "[ERROR]: Could not initialize EnaTxPort.\n");
+            std::fprintf(stderr, "[ERROR]: Could not initialize DpdkTxPort.\n");
             return 1;
         }
 
@@ -115,7 +115,7 @@ namespace
         std::memcpy(next_hop_mac.addr_bytes, configOpt->next_hop_mac.data(), configOpt->next_hop_mac.size());
 
         const auto dst = dpdk::prepare_destination(
-            ena_port_info->eth_addr,
+            dpdk_port_info->eth_addr,
             next_hop_mac,
             configOpt->local_ipv4_be,
             configOpt->peer_ipv4_be,
@@ -225,7 +225,7 @@ namespace
             data_counters.data_sequences_consumed++;
             next_data_seq++;
 
-            if (rte_eth_tx_burst(ena_port_info->port_id, dpdk::EnaTxPort::TX_QUEUE_ID, &mbuf, 1) == 0)
+            if (rte_eth_tx_burst(dpdk_port_info->port_id, dpdk::DpdkTxPort::TX_QUEUE_ID, &mbuf, 1) == 0)
             {
                 data_counters.tx_packets_unsent++;
                 rte_pktmbuf_free(mbuf);
@@ -239,7 +239,7 @@ namespace
         printInputCounters(reader.get_counters());
         printDataCounters(data_counters);
 
-        if (rte_eth_stats_get(ena_port_info->port_id, &rte_stats) == 0)
+        if (rte_eth_stats_get(dpdk_port_info->port_id, &rte_stats) == 0)
         {
             printRteStats(rte_stats);
         } else
@@ -247,19 +247,19 @@ namespace
             std::fprintf(stderr, "[WARNING]: Could not retrieve rte_eth_stats\n");
         }
 
-        const int xstats_count = rte_eth_xstats_get_names(ena_port_info->port_id, nullptr, 0);
+        const int xstats_count = rte_eth_xstats_get_names(dpdk_port_info->port_id, nullptr, 0);
         if (xstats_count > 0)
         {
             std::vector<rte_eth_xstat_name> xstats_names(xstats_count);
             std::vector<rte_eth_xstat> xstats(xstats_count);
 
-            if (const int res = rte_eth_xstats_get_names(ena_port_info->port_id, xstats_names.data(), xstats_count); res < 0 || res != xstats_count)
+            if (const int res = rte_eth_xstats_get_names(dpdk_port_info->port_id, xstats_names.data(), xstats_count); res < 0 || res != xstats_count)
             {
                 std::fprintf(stderr, "[WARNING]: Could not retrieve xstats_names\n");
                 return err;
             }
 
-            if (const int res = rte_eth_xstats_get(ena_port_info->port_id, xstats.data(), xstats_count); res < 0 || res != xstats_count)
+            if (const int res = rte_eth_xstats_get(dpdk_port_info->port_id, xstats.data(), xstats_count); res < 0 || res != xstats_count)
             {
                 std::fprintf(stderr, "[WARNING]: Could not retrieve xstats values\n");
                 return err;
