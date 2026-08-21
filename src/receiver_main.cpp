@@ -73,7 +73,7 @@ namespace
         std::fprintf(stdout, "RteStats:\n");
         std::fprintf(stdout, "Successfully received packets:\t%lu\n", counters.ipackets);
         std::fprintf(stdout, "Successfully received bytes:\t%lu\n", counters.ibytes);
-        std::fprintf(stdout, "Total packets missed by ha:\t%lu\n", counters.imissed);
+        std::fprintf(stdout, "Total packets missed by hard:\t%lu\n", counters.imissed);
         std::fprintf(stdout, "Total erroneous received packets:\t%lu\n", counters.ierrors);
         std::fprintf(stdout, "Total Rx mbuf allocation failures:\t%lu\n\n", counters.rx_nombuf);
     }
