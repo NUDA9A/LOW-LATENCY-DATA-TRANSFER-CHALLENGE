@@ -21,6 +21,7 @@ namespace dpdk
         rte_ether_hdr ethernet{};
         rte_ipv4_hdr ipv4{};
         rte_udp_hdr udp{};
+        std::uint16_t ipv4_checksum_base{};
     };
 
     inline constexpr std::size_t DATA_PACKET_CANONICAL_CAPACITY = 1472;

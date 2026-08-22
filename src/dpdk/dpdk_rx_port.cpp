@@ -10,7 +10,6 @@
 
 namespace
 {
-    constexpr std::uint64_t REQUIRED_RX_OFFLOADS = RTE_ETH_RX_OFFLOAD_IPV4_CKSUM | RTE_ETH_RX_OFFLOAD_UDP_CKSUM;
     constexpr std::uint16_t RX_QUEUE_NUMBER = 1;
     constexpr std::uint16_t TX_QUEUE_NUMBER = 0;
     constexpr std::uint32_t MTU = 1500;
@@ -32,16 +31,10 @@ namespace dpdk
         rte_mempool_free(rx_mbuf_pool_);
     }
 
-    bool DpdkRxPort::try_initialize(const int socket_id, const std::uint64_t rx_offload_capa) noexcept
+    bool DpdkRxPort::try_initialize(const int socket_id) noexcept
     {
         rte_eth_conf cfg{};
         cfg.rxmode.mtu = MTU;
-
-        if ((rx_offload_capa & REQUIRED_RX_OFFLOADS) != REQUIRED_RX_OFFLOADS)
-        {
-            return false;
-        }
-        cfg.rxmode.offloads |= REQUIRED_RX_OFFLOADS;
 
         if (rte_eth_dev_configure(port_id_, RX_QUEUE_NUMBER, TX_QUEUE_NUMBER, &cfg) != 0)
         {

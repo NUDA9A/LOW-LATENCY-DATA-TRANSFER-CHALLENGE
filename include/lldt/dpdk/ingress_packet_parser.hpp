@@ -20,21 +20,5 @@ namespace transport
         sizeof(rte_ipv4_hdr) + // 20
         sizeof(rte_udp_hdr); // 8
 
-    enum class IngressPacketParseStatus
-    {
-        Ok,
-        Rejected,
-        InvalidChecksum
-    };
-
-    struct IngressPacketParseResult
-    {
-        IngressPacketParseStatus status = IngressPacketParseStatus::Rejected;
-        const std::byte* udp_payload{nullptr};
-        std::size_t udp_payload_size{};
-    };
-
-    IngressPacketParseResult parse_ingress_packet(rte_mbuf* mbuf, const EndpointConfig& config) noexcept;
-
-    std::optional<CanonicalDataPacketView> try_parse_canonical_data_packet(const std::byte* data, std::size_t packet_size) noexcept;
+    std::optional<CanonicalDataPacketView> try_parse_canonical_data_packet(rte_mbuf* mbuf) noexcept;
 }

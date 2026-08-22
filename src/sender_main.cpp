@@ -103,7 +103,7 @@ namespace
         }
 
         dpdk::DpdkTxPort port{dpdk_port_info->port_id};
-        if (!port.try_initialize(dpdk_port_info->socket_id, dpdk_port_info->eth_dev_info.tx_offload_capa))
+        if (!port.try_initialize(dpdk_port_info->socket_id))
         {
             std::fprintf(stderr, "[ERROR]: Could not initialize DpdkTxPort.\n");
             return 1;

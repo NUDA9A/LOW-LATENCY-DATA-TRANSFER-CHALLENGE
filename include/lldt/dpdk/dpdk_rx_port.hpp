@@ -23,7 +23,7 @@ namespace dpdk
 
         explicit DpdkRxPort(std::uint16_t port_id) noexcept;
 
-        bool try_initialize(int socket_id, std::uint64_t rx_offload_capa) noexcept;
+        bool try_initialize(int socket_id) noexcept;
 
         rte_mempool* get_rx_mbuf_pool() const noexcept;
     private:

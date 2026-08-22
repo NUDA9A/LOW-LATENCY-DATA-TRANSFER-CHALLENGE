@@ -32,22 +32,13 @@ namespace dpdk
 
         ipv4.total_length = rte_cpu_to_be_16(static_cast<std::uint16_t>(ipv4_size));
 
+        std::uint32_t sum = dst.ipv4_checksum_base + ipv4.total_length;
+        sum = (sum & 0xFFFF) + (sum >> 16);
+        ipv4.hdr_checksum = static_cast<rte_be16_t>(~sum);
+
         udp.dgram_len = rte_cpu_to_be_16(static_cast<std::uint16_t>(udp_size));
 
-        mbuf->l2_len = sizeof(rte_ether_hdr);
-        mbuf->l3_len = sizeof(rte_ipv4_hdr);
-
-        mbuf->packet_type =
-        RTE_PTYPE_L2_ETHER |
-        RTE_PTYPE_L3_IPV4 |
-        RTE_PTYPE_L4_UDP;
-
-        mbuf->ol_flags =
-            RTE_MBUF_F_TX_IPV4 |
-            RTE_MBUF_F_TX_IP_CKSUM |
-            RTE_MBUF_F_TX_UDP_CKSUM;
-
-        udp.dgram_cksum = rte_ipv4_phdr_cksum(&ipv4, mbuf->ol_flags);
+        udp.dgram_cksum = 0;
 
         auto* output = rte_pktmbuf_mtod(mbuf, std::byte*);
 
@@ -82,7 +73,7 @@ namespace dpdk
         destination.ipv4.fragment_offset = rte_cpu_to_be_16(RTE_IPV4_HDR_DF_FLAG);
         destination.ipv4.time_to_live    = 64;
         destination.ipv4.next_proto_id   = IPPROTO_UDP;
-        destination.ipv4.hdr_checksum    = 0;                // IPv4 checksum offload
+        destination.ipv4.hdr_checksum    = 0;
         destination.ipv4.src_addr        = local_ipv4;
         destination.ipv4.dst_addr        = receiver_ipv4;
 
@@ -90,7 +81,9 @@ namespace dpdk
         destination.udp.src_port    = rte_cpu_to_be_16(data_port);
         destination.udp.dst_port    = rte_cpu_to_be_16(data_port);
         destination.udp.dgram_len   = 0; // заполняется в finalize_data_packet()
-        destination.udp.dgram_cksum = 0; // в finalize_data_packet() заменяется pseudo-header checksum
+        destination.udp.dgram_cksum = 0;
+
+        destination.ipv4_checksum_base = rte_raw_cksum(&destination.ipv4, sizeof(destination.ipv4));
 
         return destination;
     }

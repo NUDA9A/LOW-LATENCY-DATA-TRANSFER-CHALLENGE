@@ -30,8 +30,6 @@ namespace
         std::uint64_t rx_packets{};
         std::uint64_t rx_bytes{};
 
-        std::uint64_t ingress_rejected{};
-        std::uint64_t invalid_checksums{};
         std::uint64_t invalid_lldt_packets{};
 
         std::uint64_t stale_data_packets{};
@@ -55,8 +53,6 @@ namespace
         std::fprintf(stdout, "Empty RxBursts:\t%lu\n", counters.empty_rx_bursts);
         std::fprintf(stdout, "Total received packets:\t%lu\n", counters.rx_packets);
         std::fprintf(stdout, "Total received bytes:\t%lu\n", counters.rx_bytes);
-        std::fprintf(stdout, "Total rejected packets:\t%lu\n", counters.ingress_rejected);
-        std::fprintf(stdout, "Total packets with invalid checksums:\t%lu\n", counters.invalid_checksums);
         std::fprintf(stdout, "Total invalid lldt packets:\t%lu\n", counters.invalid_lldt_packets);
         std::fprintf(stdout, "Total stale packets:\t%lu\n", counters.stale_data_packets);
         std::fprintf(stdout, "Total gaps:\t%lu\n", counters.data_gap_events);
@@ -105,7 +101,7 @@ namespace
         transport::ReceiverShmWriter writer{configOpt->shm_name, configOpt->slots};
 
         dpdk::DpdkRxPort port{dpdk_port_info->port_id};
-        if (!port.try_initialize(dpdk_port_info->socket_id, dpdk_port_info->eth_dev_info.rx_offload_capa))
+        if (!port.try_initialize(dpdk_port_info->socket_id))
         {
             std::fprintf(stderr, "[ERROR]: Could not initialize DpdkRxPort.\n");
             return 1;
@@ -134,20 +130,7 @@ namespace
                 ++counters.rx_packets;
                 counters.rx_bytes += mbuf->data_len;
 
-                const auto ingress = transport::parse_ingress_packet(mbuf, *configOpt);
-                switch (ingress.status)
-                {
-                case transport::IngressPacketParseStatus::Rejected:
-                    ++counters.ingress_rejected;
-                    continue;
-                case transport::IngressPacketParseStatus::InvalidChecksum:
-                    ++counters.invalid_checksums;
-                    continue;
-                default:
-                    break;
-                }
-
-                const auto packet = transport::try_parse_canonical_data_packet(ingress.udp_payload, ingress.udp_payload_size);
+                const auto packet = transport::try_parse_canonical_data_packet(mbuf);
                 if (!packet)
                 {
                     ++counters.invalid_lldt_packets;
