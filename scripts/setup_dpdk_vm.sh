@@ -6,6 +6,9 @@ DATAPATH_BDF="${2}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+DPDK_DEVBIND="${ROOT}/build/dependencies/dpdk-25.11.2/install/bin/dpdk-devbind.py"
+
 ISOLATED_CORES="2,4"
 HOUSEKEEPING_CORES="0,6"
 
@@ -69,7 +72,7 @@ echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
 ip addr flush dev "${DATAPATH_IF}"
 ip link set "${DATAPATH_IF}" down
 
-dpdk-devbind.py --bind=vfio-pci "${DATAPATH_BDF}"
+"${DPDK_DEVBIND}" --bind=vfio-pci "${DATAPATH_BDF}"
 
 
 # -----------------------------------------------------------------------------
