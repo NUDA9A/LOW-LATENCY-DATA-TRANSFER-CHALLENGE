@@ -11,6 +11,8 @@ fi
 
 bash "${SCRIPT_DIR}/bootstrap.sh"
 
+export PATH="${ROOT}/build/tools/venv/bin:${PATH}"
+
 DOWNLOADS="${ROOT}/build/downloads"
 
 mkdir -p "${DOWNLOADS}"
