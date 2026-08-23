@@ -48,9 +48,9 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # SSH configuration.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 if (-not (Test-Path -LiteralPath $SshKeyPath -PathType Leaf)) {
     throw "SSH private key not found: $SshKeyPath"
@@ -65,12 +65,14 @@ $SenderSsh =
 $ReceiverSsh =
     "${ReceiverSshUser}@${ReceiverPublicIp}"
 
+
 $SshOptions = @(
     "-i", $SshKeyPath,
     "-o", "IdentitiesOnly=yes",
     "-o", "BatchMode=yes",
     "-o", "StrictHostKeyChecking=accept-new",
     "-o", "ConnectTimeout=10",
+    "-o", "ConnectionAttempts=3",
     "-o", "ServerAliveInterval=15",
     "-o", "ServerAliveCountMax=4"
 )
@@ -81,34 +83,94 @@ $ScpOptions = @(
     "-o", "BatchMode=yes",
     "-o", "StrictHostKeyChecking=accept-new",
     "-o", "ConnectTimeout=10",
+    "-o", "ConnectionAttempts=3",
     "-o", "ServerAliveInterval=15",
     "-o", "ServerAliveCountMax=4"
 )
 
 
-# ----------------------------------------------------------------------
-# Helpers.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# SSH helpers.
+# -----------------------------------------------------------------------------
 
 function Invoke-SshCapture {
     param(
         [string]$HostName,
-        [string]$Command
+        [string]$Command,
+        [int]$Attempts = 1,
+        [int]$RetryDelaySeconds = 2
     )
 
-    $output =
-        & ssh.exe @SshOptions $HostName $Command 2>&1
+    $lastOutput = ""
+    $lastExitCode = -1
 
-    if ($LASTEXITCODE -ne 0) {
-        throw (
-            "SSH command failed on ${HostName}:`n" +
-            ($output -join "`n")
-        )
+    for ($attempt = 1; $attempt -le $Attempts; ++$attempt) {
+        $output =
+            & ssh.exe @SshOptions $HostName $Command 2>&1
+
+        $exitCode = $LASTEXITCODE
+
+        $lastOutput =
+            ($output -join "`n").Trim()
+
+        $lastExitCode =
+            $exitCode
+
+        if ($exitCode -eq 0) {
+            return $lastOutput
+        }
+
+        if ($attempt -lt $Attempts) {
+            Start-Sleep -Seconds $RetryDelaySeconds
+        }
     }
 
-    return ($output -join "`n").Trim()
+    throw (
+        "SSH command failed on ${HostName} " +
+        "after ${Attempts} attempt(s), exit=${lastExitCode}:`n" +
+        $lastOutput
+    )
 }
 
+
+function Copy-RemoteFile {
+    param(
+        [string]$HostName,
+        [string]$RemotePath,
+        [string]$LocalPath,
+        [int]$Attempts = 4
+    )
+
+    for ($attempt = 1; $attempt -le $Attempts; ++$attempt) {
+        & scp.exe @ScpOptions `
+            "${HostName}:$RemotePath" `
+            $LocalPath
+
+        if ($LASTEXITCODE -eq 0) {
+            return
+        }
+
+        if ($attempt -lt $Attempts) {
+            Start-Sleep -Seconds 2
+        }
+    }
+
+    throw "SCP failed: ${HostName}:$RemotePath"
+}
+
+
+# -----------------------------------------------------------------------------
+# Detached remote-process helpers.
+#
+# Each process gets:
+#   <name>.runner.sh
+#   <name>.pid
+#   <name>.exit
+#   <name>.log
+#
+# The runner is launched in a new session/process group. SSH can disappear
+# without terminating the benchmark process.
+# -----------------------------------------------------------------------------
 
 function Start-RemoteProcess {
     param(
@@ -119,33 +181,126 @@ function Start-RemoteProcess {
         [string]$Command
     )
 
-    # setsid gives every remotely launched application its own process group.
-    # This lets us later signal the whole group, including sudo/child processes.
-    $remote =
-        "cd '$Repo' || exit 1; " +
-        "mkdir -p '$RunDir' || exit 1; " +
-        "nohup setsid $Command " +
-        "> '$RunDir/$Name.log' 2>&1 < /dev/null & " +
-        "echo `$! > '$RunDir/$Name.pid'"
+    $PidPath =
+        "$RunDir/$Name.pid"
 
-    [void](Invoke-SshCapture $HostName $remote)
+    $ExitPath =
+        "$RunDir/$Name.exit"
+
+    $RunnerPath =
+        "$RunDir/$Name.runner.sh"
+
+    $LogPath =
+        "$RunDir/$Name.log"
+
+
+    $runnerTemplate = @'
+#!/usr/bin/env bash
+set +e
+
+PID_FILE='__PID_FILE__'
+EXIT_FILE='__EXIT_FILE__'
+
+printf '%s\n' "$$" > "${PID_FILE}.tmp"
+mv -f "${PID_FILE}.tmp" "${PID_FILE}"
+
+cd '__REPO__'
+
+if [[ $? -ne 0 ]]; then
+    printf '%s\n' "200" > "${EXIT_FILE}.tmp"
+    mv -f "${EXIT_FILE}.tmp" "${EXIT_FILE}"
+    exit 200
+fi
+
+__COMMAND__
+
+rc=$?
+
+printf '%s\n' "${rc}" > "${EXIT_FILE}.tmp"
+mv -f "${EXIT_FILE}.tmp" "${EXIT_FILE}"
+
+exit "${rc}"
+'@
+
+    $runner =
+        $runnerTemplate.
+            Replace("__PID_FILE__", $PidPath).
+            Replace("__EXIT_FILE__", $ExitPath).
+            Replace("__REPO__", $Repo).
+            Replace("__COMMAND__", $Command)
+
+
+    $payload =
+        [Convert]::ToBase64String(
+            [Text.Encoding]::UTF8.GetBytes($runner)
+        )
+
+
+    # Idempotent enough for SSH reconnect:
+    #
+    # - if a previous start succeeded, the PID file appears immediately and
+    #   the existing process group is reused;
+    # - if the program already terminated, .exit prevents accidental restart.
+    $remote =
+        "mkdir -p '$RunDir'; " +
+        "if [ -f '$ExitPath' ]; then exit 2; fi; " +
+        "if [ -s '$PidPath' ] && " +
+        "sudo -n kill -0 -- -`$(cat '$PidPath') 2>/dev/null; " +
+        "then exit 0; fi; " +
+        "rm -f '$PidPath'; " +
+        "printf '%s' '$payload' | base64 -d > '$RunnerPath'; " +
+        "chmod 700 '$RunnerPath'; " +
+        "nohup setsid '$RunnerPath' " +
+        "> '$LogPath' 2>&1 < /dev/null & " +
+        "for i in `$(seq 1 20); do " +
+        "[ -s '$PidPath' ] && exit 0; " +
+        "sleep 0.1; " +
+        "done; " +
+        "exit 1"
+
+
+    [void](
+        Invoke-SshCapture `
+            $HostName `
+            $remote `
+            3 `
+            2
+    )
 }
 
 
-function Test-RemoteProcess {
+function Get-RemoteProcessStatus {
     param(
         [string]$HostName,
         [string]$RunDir,
         [string]$Name
     )
 
-    $command =
-        "pid=`$(cat '$RunDir/$Name.pid' 2>/dev/null) || exit 1; " +
-        "sudo -n kill -0 -- -`$pid 2>/dev/null"
+    $PidPath =
+        "$RunDir/$Name.pid"
 
-    & ssh.exe @SshOptions $HostName $command *> $null
+    $ExitPath =
+        "$RunDir/$Name.exit"
 
-    return ($LASTEXITCODE -eq 0)
+
+    $remote =
+        "if [ -f '$ExitPath' ]; then " +
+        "printf 'DONE '; cat '$ExitPath'; " +
+        "elif [ -s '$PidPath' ] && " +
+        "sudo -n kill -0 -- -`$(cat '$PidPath') 2>/dev/null; then " +
+        "echo RUNNING; " +
+        "else " +
+        "echo LOST; " +
+        "fi"
+
+
+    return (
+        Invoke-SshCapture `
+            $HostName `
+            $remote `
+            4 `
+            2
+    ).Trim()
 }
 
 
@@ -157,15 +312,27 @@ function Stop-RemoteProcess {
         [string]$Signal
     )
 
-    $command =
-        "pid=`$(cat '$RunDir/$Name.pid' 2>/dev/null) || exit 0; " +
-        "sudo -n kill -$Signal -- -`$pid 2>/dev/null || true"
+    $PidPath =
+        "$RunDir/$Name.pid"
 
-    & ssh.exe @SshOptions $HostName $command *> $null
+
+    $remote =
+        "if [ -s '$PidPath' ]; then " +
+        "sudo -n kill -$Signal -- -`$(cat '$PidPath') 2>/dev/null || true; " +
+        "fi"
+
+
+    [void](
+        Invoke-SshCapture `
+            $HostName `
+            $remote `
+            4 `
+            2
+    )
 }
 
 
-function Wait-RemoteProcessExit {
+function Wait-RemoteProcessStopped {
     param(
         [string]$HostName,
         [string]$RunDir,
@@ -176,43 +343,67 @@ function Wait-RemoteProcessExit {
     $deadline =
         (Get-Date).AddSeconds($TimeoutSeconds)
 
+
     while ((Get-Date) -lt $deadline) {
-        if (-not (
-            Test-RemoteProcess `
+        $status =
+            Get-RemoteProcessStatus `
                 $HostName `
                 $RunDir `
                 $Name
-        )) {
+
+        if ($status -ne "RUNNING") {
             return $true
         }
 
-        Start-Sleep -Milliseconds 250
+        Start-Sleep -Milliseconds 500
     }
 
     return $false
 }
 
 
-function Copy-RemoteFile {
-    param(
-        [string]$HostName,
-        [string]$RemotePath,
-        [string]$LocalPath
-    )
+# -----------------------------------------------------------------------------
+# Clock-state capture.
+#
+# setup_dpdk_vm.sh is responsible for synchronization and validation.
+# run_pair.ps1 only records the state used by the benchmark.
+# -----------------------------------------------------------------------------
 
-    & scp.exe @ScpOptions `
-        "${HostName}:$RemotePath" `
-        $LocalPath
-
-    if ($LASTEXITCODE -ne 0) {
-        throw "SCP failed: ${HostName}:$RemotePath"
-    }
+function Get-SenderClockSnapshot {
+    return Invoke-SshCapture `
+        $SenderSsh `
+        (
+            "chronyc tracking; " +
+            "echo; " +
+            "chronyc sources -n -v; " +
+            "echo; " +
+            "chronyc sourcestats -n -v"
+        ) `
+        4 `
+        2
 }
 
 
-# ----------------------------------------------------------------------
-# Run directories.
-# ----------------------------------------------------------------------
+function Get-ReceiverClockSnapshot {
+    return Invoke-SshCapture `
+        $ReceiverSsh `
+        (
+            "chronyc tracking; " +
+            "echo; " +
+            "chronyc sources -n -v; " +
+            "echo; " +
+            "chronyc sourcestats -n -v; " +
+            "echo; " +
+            "chronyc ntpdata '$SenderManagementIp'"
+        ) `
+        4 `
+        2
+}
+
+
+# -----------------------------------------------------------------------------
+# Run directory.
+# -----------------------------------------------------------------------------
 
 $RunId =
     (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff")
@@ -225,6 +416,7 @@ New-Item `
     -Force `
     $LocalRunDir |
     Out-Null
+
 
 $SenderRunDir =
     "/tmp/lldt-$RunId"
@@ -243,47 +435,68 @@ Write-Host "Samples:      $Samples"
 Write-Host
 
 
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # SSH / sudo preflight.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 Write-Host "Checking SSH..."
 
-[void](Invoke-SshCapture `
-    $SenderSsh `
-    "echo sender-ssh-ok")
+[void](
+    Invoke-SshCapture `
+        $SenderSsh `
+        "echo sender-ssh-ok" `
+        4 `
+        2
+)
 
-[void](Invoke-SshCapture `
-    $ReceiverSsh `
-    "echo receiver-ssh-ok")
+[void](
+    Invoke-SshCapture `
+        $ReceiverSsh `
+        "echo receiver-ssh-ok" `
+        4 `
+        2
+)
 
 
 Write-Host "Checking passwordless sudo..."
 
-[void](Invoke-SshCapture `
-    $SenderSsh `
-    "sudo -n true")
+[void](
+    Invoke-SshCapture `
+        $SenderSsh `
+        "sudo -n true" `
+        4 `
+        2
+)
 
-[void](Invoke-SshCapture `
-    $ReceiverSsh `
-    "sudo -n true")
+[void](
+    Invoke-SshCapture `
+        $ReceiverSsh `
+        "sudo -n true" `
+        4 `
+        2
+)
 
 
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Repository consistency.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 Write-Host "Checking commits..."
 
 $SenderCommit =
     Invoke-SshCapture `
         $SenderSsh `
-        "cd '$SenderRepo' && git rev-parse HEAD"
+        "cd '$SenderRepo' && git rev-parse HEAD" `
+        4 `
+        2
 
 $ReceiverCommit =
     Invoke-SshCapture `
         $ReceiverSsh `
-        "cd '$ReceiverRepo' && git rev-parse HEAD"
+        "cd '$ReceiverRepo' && git rev-parse HEAD" `
+        4 `
+        2
+
 
 if ($SenderCommit -ne $ReceiverCommit) {
     throw (
@@ -292,12 +505,13 @@ if ($SenderCommit -ne $ReceiverCommit) {
     )
 }
 
+
 Write-Host "Commit: $SenderCommit"
 
 
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Matched build.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 if (-not $SkipBuild) {
     if ($Profile -eq "compact") {
@@ -315,35 +529,41 @@ if (-not $SkipBuild) {
             "make -C harness LLDT_MESSAGE_PROFILE=raw"
     }
 
+
     Write-Host "Building Sender..."
 
-    [void](Invoke-SshCapture `
-        $SenderSsh `
-        "cd '$SenderRepo' && $BuildCommand")
+    [void](
+        Invoke-SshCapture `
+            $SenderSsh `
+            "cd '$SenderRepo' && $BuildCommand"
+    )
+
 
     Write-Host "Building Receiver..."
 
-    [void](Invoke-SshCapture `
-        $ReceiverSsh `
-        "cd '$ReceiverRepo' && $BuildCommand")
+    [void](
+        Invoke-SshCapture `
+            $ReceiverSsh `
+            "cd '$ReceiverRepo' && $BuildCommand"
+    )
 }
 
 
-# ----------------------------------------------------------------------
-# Clock preflight.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Record clock state.
+#
+# No synchronization/check is performed here. setup_dpdk_vm.sh has already
+# established and validated it manually before run_pair.ps1 is invoked.
+# -----------------------------------------------------------------------------
 
-Write-Host "Checking clock synchronization..."
+Write-Host "Recording clock state..."
 
 $SenderClockBefore =
-    Invoke-SshCapture `
-        $SenderSsh `
-        "cd '$SenderRepo' && ./scripts/check_clock_sync.sh"
+    Get-SenderClockSnapshot
 
 $ReceiverClockBefore =
-    Invoke-SshCapture `
-        $ReceiverSsh `
-        "cd '$ReceiverRepo' && ./scripts/check_clock_sync.sh '$SenderManagementIp'"
+    Get-ReceiverClockSnapshot
+
 
 Set-Content `
     (Join-Path $LocalRunDir "sender-clock-before.txt") `
@@ -354,9 +574,9 @@ Set-Content `
     $ReceiverClockBefore
 
 
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Environment snapshots.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 $EnvironmentCommand = @"
 echo '=== git ==='
@@ -366,6 +586,10 @@ git status --short
 echo
 echo '=== compiler ==='
 g++ --version | head -n 1
+
+echo
+echo '=== dpdk ==='
+pkg-config --modversion libdpdk || true
 
 echo
 echo '=== kernel ==='
@@ -386,21 +610,24 @@ grep -E 'HugePages_Total|HugePages_Free|Hugepagesize' /proc/meminfo
 echo
 echo '=== PCI ethernet ==='
 lspci -nnk | grep -A3 -i 'Ethernet controller' || true
-
-echo
-echo '=== chrony ==='
-chronyc tracking
 "@
+
 
 $SenderEnvironment =
     Invoke-SshCapture `
         $SenderSsh `
-        "cd '$SenderRepo' && $EnvironmentCommand"
+        "cd '$SenderRepo' && $EnvironmentCommand" `
+        4 `
+        2
+
 
 $ReceiverEnvironment =
     Invoke-SshCapture `
         $ReceiverSsh `
-        "cd '$ReceiverRepo' && $EnvironmentCommand"
+        "cd '$ReceiverRepo' && $EnvironmentCommand" `
+        4 `
+        2
+
 
 Set-Content `
     (Join-Path $LocalRunDir "sender-environment.txt") `
@@ -411,9 +638,9 @@ Set-Content `
     $ReceiverEnvironment
 
 
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Manifest.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 $Manifest = [ordered]@{
     run_id                 = $RunId
@@ -421,6 +648,7 @@ $Manifest = [ordered]@{
 
     profile                = $Profile
     batching               = [bool]$Batching
+
     rate                   = $Rate
     samples                = $Samples
     message_type           = $MessageType
@@ -440,7 +668,11 @@ $Manifest = [ordered]@{
     receiver_data_ip       = $ReceiverDataIp
 
     next_hop_mac           = $NextHopMac
+
+    setup_precondition     =
+        "setup_dpdk_vm.sh completed manually on all VMs"
 }
+
 
 $Manifest |
     ConvertTo-Json -Depth 4 |
@@ -448,9 +680,9 @@ $Manifest |
         (Join-Path $LocalRunDir "manifest.json")
 
 
-# ----------------------------------------------------------------------
-# Remove stale SHM from previous interrupted runs.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Remove SHM left by an interrupted previous run.
+# -----------------------------------------------------------------------------
 
 if (-not $ShmName.StartsWith("/")) {
     throw "SHM name must start with '/': $ShmName"
@@ -466,18 +698,27 @@ if ($ShmLeaf.Contains("/")) {
 $ShmPath =
     "/dev/shm/$ShmLeaf"
 
-[void](Invoke-SshCapture `
-    $SenderSsh `
-    "sudo -n rm -f '$ShmPath'")
 
-[void](Invoke-SshCapture `
-    $ReceiverSsh `
-    "sudo -n rm -f '$ShmPath'")
+[void](
+    Invoke-SshCapture `
+        $SenderSsh `
+        "sudo -n rm -f '$ShmPath'" `
+        4 `
+        2
+)
+
+[void](
+    Invoke-SshCapture `
+        $ReceiverSsh `
+        "sudo -n rm -f '$ShmPath'" `
+        4 `
+        2
+)
 
 
-# ----------------------------------------------------------------------
-# Commands.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Application commands.
+# -----------------------------------------------------------------------------
 
 $BatchArgument = ""
 
@@ -528,9 +769,9 @@ $ConsumerCommand =
     "--csv $ReceiverRunDir/latency.csv"
 
 
-# ----------------------------------------------------------------------
-# Run.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Run state.
+# -----------------------------------------------------------------------------
 
 $ReceiverStarted = $false
 $ProducerStarted = $false
@@ -541,7 +782,9 @@ $Failure = $null
 
 
 try {
-    # Receiver ---------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Receiver.
+    # -------------------------------------------------------------------------
 
     Write-Host "Starting Receiver..."
 
@@ -556,17 +799,21 @@ try {
 
     Start-Sleep -Seconds 1
 
-    if (-not (
-        Test-RemoteProcess `
+
+    $status =
+        Get-RemoteProcessStatus `
             $ReceiverSsh `
             $ReceiverRunDir `
             "receiver"
-    )) {
-        throw "Receiver exited during startup."
+
+    if ($status -ne "RUNNING") {
+        throw "Receiver exited during startup: $status"
     }
 
 
-    # Producer ---------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Producer.
+    # -------------------------------------------------------------------------
 
     Write-Host "Starting Producer..."
 
@@ -581,17 +828,21 @@ try {
 
     Start-Sleep -Milliseconds 500
 
-    if (-not (
-        Test-RemoteProcess `
+
+    $status =
+        Get-RemoteProcessStatus `
             $SenderSsh `
             $SenderRunDir `
             "producer"
-    )) {
-        throw "Producer exited during startup."
+
+    if ($status -ne "RUNNING") {
+        throw "Producer exited during startup: $status"
     }
 
 
-    # Sender -----------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Sender.
+    # -------------------------------------------------------------------------
 
     Write-Host "Starting Sender..."
 
@@ -606,33 +857,30 @@ try {
 
     Start-Sleep -Seconds 1
 
-    if (-not (
-        Test-RemoteProcess `
+
+    $status =
+        Get-RemoteProcessStatus `
             $SenderSsh `
             $SenderRunDir `
             "sender"
-    )) {
-        throw "Sender exited during startup."
-    }
 
-    if (-not (
-        Test-RemoteProcess `
-            $ReceiverSsh `
-            $ReceiverRunDir `
-            "receiver"
-    )) {
-        throw "Receiver exited during Sender startup."
+    if ($status -ne "RUNNING") {
+        throw "Sender exited during startup: $status"
     }
 
 
-    # Warm-up ----------------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Warm-up.
+    # -------------------------------------------------------------------------
 
     Write-Host "Warm-up: $WarmupSeconds s"
 
     Start-Sleep -Seconds $WarmupSeconds
 
 
-    # Measured consumer ------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Measured consumer.
+    # -------------------------------------------------------------------------
 
     Write-Host "Starting measured Consumer..."
 
@@ -646,82 +894,107 @@ try {
     $ConsumerStarted = $true
 
 
-    $ExpectedSeconds =
-        [Math]::Ceiling(
-            [double]$Samples /
+    if ($Rate -gt 0) {
+        $ExpectedSeconds =
+            [double]$Samples / [double]$Rate
+
+        $InitialQuietWaitSeconds =
             [Math]::Max(
-                [double]$Rate,
-                1.0
+                1,
+                [int][Math]::Ceiling($ExpectedSeconds) + 1
             )
+
+        $MeasurementTimeoutSeconds =
+            [Math]::Max(
+                60,
+                [int][Math]::Ceiling($ExpectedSeconds * 4.0) + 30
+            )
+    }
+    else {
+        $InitialQuietWaitSeconds = 2
+        $MeasurementTimeoutSeconds = 120
+    }
+
+
+    # -------------------------------------------------------------------------
+    # Intentionally no SSH activity during the expected measured interval.
+    # -------------------------------------------------------------------------
+
+    Write-Host (
+        "Measured interval: no SSH polling for " +
+        "$InitialQuietWaitSeconds s"
+    )
+
+    Start-Sleep -Seconds $InitialQuietWaitSeconds
+
+
+    $MeasurementDeadline =
+        (Get-Date).AddSeconds(
+            $MeasurementTimeoutSeconds -
+            $InitialQuietWaitSeconds
         )
 
-    $TimeoutSeconds =
-        [Math]::Max(
-            60,
-            [int]($ExpectedSeconds * 4 + 30)
-        )
 
-    $MeasuredDeadline =
-        (Get-Date).AddSeconds($TimeoutSeconds)
+    # -------------------------------------------------------------------------
+    # After the expected run duration, check the completion file periodically.
+    # SSH failures are retried inside Get-RemoteProcessStatus.
+    # -------------------------------------------------------------------------
 
-
-    while (
-        Test-RemoteProcess `
-            $ReceiverSsh `
-            $ReceiverRunDir `
-            "consumer"
-    ) {
-        if (-not (
-            Test-RemoteProcess `
+    while ($true) {
+        $status =
+            Get-RemoteProcessStatus `
                 $ReceiverSsh `
                 $ReceiverRunDir `
-                "receiver"
-        )) {
-            throw "Receiver exited during measured phase."
+                "consumer"
+
+
+        if ($status.StartsWith("DONE ")) {
+            $consumerExitCode =
+                [int]$status.Substring(5).Trim()
+
+            if ($consumerExitCode -ne 0) {
+                throw "Consumer failed with exit code $consumerExitCode."
+            }
+
+            break
         }
 
-        if (-not (
-            Test-RemoteProcess `
-                $SenderSsh `
-                $SenderRunDir `
-                "sender"
-        )) {
-            throw "Sender exited during measured phase."
+
+        if ($status -eq "LOST") {
+            throw "Consumer disappeared without an exit status."
         }
 
-        if (-not (
-            Test-RemoteProcess `
-                $SenderSsh `
-                $SenderRunDir `
-                "producer"
-        )) {
-            throw "Producer exited during measured phase."
-        }
 
-        if ((Get-Date) -ge $MeasuredDeadline) {
+        if ((Get-Date) -ge $MeasurementDeadline) {
             throw "Consumer timed out."
         }
 
-        Start-Sleep -Milliseconds 500
+
+        Start-Sleep -Seconds 2
     }
 
 
     $ConsumerStarted = $false
 
 
-    # Consumer can also terminate due to its idle timeout. Require exactly
-    # the requested number of stored samples before accepting the run.
+    # -------------------------------------------------------------------------
+    # Require exactly the requested measured sample count.
+    # -------------------------------------------------------------------------
 
-    $CsvLineCountText =
+    $CsvCountOutput =
         Invoke-SshCapture `
             $ReceiverSsh `
-            "sudo -n sh -c `"wc -l < '$ReceiverRunDir/latency.csv'`""
+            "sudo -n wc -l '$ReceiverRunDir/latency.csv'" `
+            4 `
+            2
+
 
     $CsvLineCount =
-        [Int64]$CsvLineCountText
+        [Int64](($CsvCountOutput -split '\s+')[0])
 
     $ExpectedCsvLines =
         [Int64]$Samples + 1
+
 
     if ($CsvLineCount -ne $ExpectedCsvLines) {
         throw (
@@ -730,10 +1003,13 @@ try {
         )
     }
 
+
     Write-Host "Measured phase complete."
 
 
-    # Stop source traffic ----------------------------------------------
+    # -------------------------------------------------------------------------
+    # Stop source traffic first.
+    # -------------------------------------------------------------------------
 
     Stop-RemoteProcess `
         $SenderSsh `
@@ -741,8 +1017,9 @@ try {
         "producer" `
         "TERM"
 
+
     [void](
-        Wait-RemoteProcessExit `
+        Wait-RemoteProcessStopped `
             $SenderSsh `
             $SenderRunDir `
             "producer" `
@@ -751,37 +1028,13 @@ try {
 
     $ProducerStarted = $false
 
+
     Start-Sleep -Seconds 1
 
 
-    # Clock snapshots after measurement -------------------------------
-
-    $SenderClockAfter =
-        Invoke-SshCapture `
-            $SenderSsh `
-            "chronyc tracking; echo; chronyc sources -v"
-
-    $ReceiverClockAfter =
-        Invoke-SshCapture `
-            $ReceiverSsh `
-            (
-                "chronyc tracking; " +
-                "echo; " +
-                "chronyc sources -v; " +
-                "echo; " +
-                "chronyc ntpdata '$SenderManagementIp'"
-            )
-
-    Set-Content `
-        (Join-Path $LocalRunDir "sender-clock-after.txt") `
-        $SenderClockAfter
-
-    Set-Content `
-        (Join-Path $LocalRunDir "receiver-clock-after.txt") `
-        $ReceiverClockAfter
-
-
-    # Sender shutdown --------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Graceful Sender shutdown.
+    # -------------------------------------------------------------------------
 
     Write-Host "Stopping Sender..."
 
@@ -791,8 +1044,9 @@ try {
         "sender" `
         "INT"
 
+
     if (-not (
-        Wait-RemoteProcessExit `
+        Wait-RemoteProcessStopped `
             $SenderSsh `
             $SenderRunDir `
             "sender" `
@@ -804,7 +1058,9 @@ try {
     $SenderStarted = $false
 
 
-    # Receiver shutdown ------------------------------------------------
+    # -------------------------------------------------------------------------
+    # Graceful Receiver shutdown.
+    # -------------------------------------------------------------------------
 
     Write-Host "Stopping Receiver..."
 
@@ -814,8 +1070,9 @@ try {
         "receiver" `
         "INT"
 
+
     if (-not (
-        Wait-RemoteProcessExit `
+        Wait-RemoteProcessStopped `
             $ReceiverSsh `
             $ReceiverRunDir `
             "receiver" `
@@ -830,57 +1087,125 @@ catch {
     $Failure = $_
 }
 finally {
+    # -------------------------------------------------------------------------
+    # Best-effort cleanup after any failure.
+    # -------------------------------------------------------------------------
+
     if ($ConsumerStarted) {
-        Stop-RemoteProcess `
-            $ReceiverSsh `
-            $ReceiverRunDir `
-            "consumer" `
-            "TERM"
+        try {
+            Stop-RemoteProcess `
+                $ReceiverSsh `
+                $ReceiverRunDir `
+                "consumer" `
+                "TERM"
+        }
+        catch {
+        }
     }
+
 
     if ($ProducerStarted) {
-        Stop-RemoteProcess `
-            $SenderSsh `
-            $SenderRunDir `
-            "producer" `
-            "TERM"
+        try {
+            Stop-RemoteProcess `
+                $SenderSsh `
+                $SenderRunDir `
+                "producer" `
+                "TERM"
+        }
+        catch {
+        }
     }
+
 
     if ($SenderStarted) {
-        Stop-RemoteProcess `
-            $SenderSsh `
-            $SenderRunDir `
-            "sender" `
-            "INT"
+        try {
+            Stop-RemoteProcess `
+                $SenderSsh `
+                $SenderRunDir `
+                "sender" `
+                "INT"
+        }
+        catch {
+        }
     }
 
+
     if ($ReceiverStarted) {
-        Stop-RemoteProcess `
-            $ReceiverSsh `
-            $ReceiverRunDir `
-            "receiver" `
-            "INT"
+        try {
+            Stop-RemoteProcess `
+                $ReceiverSsh `
+                $ReceiverRunDir `
+                "receiver" `
+                "INT"
+        }
+        catch {
+        }
     }
+
 
     Start-Sleep -Seconds 1
 }
 
 
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Record clock state after the run.
+# -----------------------------------------------------------------------------
+
+Write-Host "Recording final clock state..."
+
+try {
+    $SenderClockAfter =
+        Get-SenderClockSnapshot
+
+    Set-Content `
+        (Join-Path $LocalRunDir "sender-clock-after.txt") `
+        $SenderClockAfter
+}
+catch {
+    Set-Content `
+        (Join-Path $LocalRunDir "sender-clock-after-error.txt") `
+        $_.Exception.Message
+}
+
+
+try {
+    $ReceiverClockAfter =
+        Get-ReceiverClockSnapshot
+
+    Set-Content `
+        (Join-Path $LocalRunDir "receiver-clock-after.txt") `
+        $ReceiverClockAfter
+}
+catch {
+    Set-Content `
+        (Join-Path $LocalRunDir "receiver-clock-after-error.txt") `
+        $_.Exception.Message
+}
+
+
+# -----------------------------------------------------------------------------
 # Make root-owned latency CSV readable through SCP.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
-& ssh.exe @SshOptions `
-    $ReceiverSsh `
-    "sudo -n chmod 0644 '$ReceiverRunDir/latency.csv' 2>/dev/null || true" `
-    *> $null
+try {
+    [void](
+        Invoke-SshCapture `
+            $ReceiverSsh `
+            "sudo -n chmod 0644 '$ReceiverRunDir/latency.csv' 2>/dev/null || true" `
+            4 `
+            2
+    )
+}
+catch {
+}
 
 
-# ----------------------------------------------------------------------
-# Collect artifacts.
-# ----------------------------------------------------------------------
+# -----------------------------------------------------------------------------
+# Collect run artifacts.
+# -----------------------------------------------------------------------------
 
 Write-Host "Collecting artifacts..."
+
 
 $Artifacts = @(
     @{
@@ -894,6 +1219,16 @@ $Artifacts = @(
         Local  = "producer.log"
     },
     @{
+        Host   = $SenderSsh
+        Remote = "$SenderRunDir/sender.exit"
+        Local  = "sender.exit"
+    },
+    @{
+        Host   = $SenderSsh
+        Remote = "$SenderRunDir/producer.exit"
+        Local  = "producer.exit"
+    },
+    @{
         Host   = $ReceiverSsh
         Remote = "$ReceiverRunDir/receiver.log"
         Local  = "receiver.log"
@@ -905,10 +1240,21 @@ $Artifacts = @(
     },
     @{
         Host   = $ReceiverSsh
+        Remote = "$ReceiverRunDir/receiver.exit"
+        Local  = "receiver.exit"
+    },
+    @{
+        Host   = $ReceiverSsh
+        Remote = "$ReceiverRunDir/consumer.exit"
+        Local  = "consumer.exit"
+    },
+    @{
+        Host   = $ReceiverSsh
         Remote = "$ReceiverRunDir/latency.csv"
         Local  = "latency.csv"
     }
 )
+
 
 foreach ($Artifact in $Artifacts) {
     try {
