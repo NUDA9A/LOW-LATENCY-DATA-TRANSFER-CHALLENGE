@@ -33,13 +33,13 @@ find_dpdk_bdf()
 
         driver="$(basename "$(readlink -f "${device}/driver")")"
 
-        if [[ "${driver}" == "vfio-pci" ]]; then
+        if [[ "${driver}" == "igb_uio" ]]; then
             candidates+=("${device##*/}")
         fi
     done
 
     if [[ ${#candidates[@]} -ne 1 ]]; then
-        echo "ERROR: expected exactly one Ethernet device bound to vfio-pci, found ${#candidates[@]}." >&2
+        echo "ERROR: expected exactly one Ethernet device bound to igb_uio, found ${#candidates[@]}." >&2
         exit 1
     fi
 
