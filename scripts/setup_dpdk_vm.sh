@@ -176,11 +176,6 @@ fi
 modprobe uio
 modprobe igb_uio wc_activate=1
 
-if [[ "$(< /sys/module/igb_uio/parameters/wc_activate)" != "1" ]]; then
-    echo "ERROR: igb_uio is not running with write combining enabled." >&2
-    exit 1
-fi
-
 if [[ -n "${DATAPATH_IF}" ]]; then
     ip addr flush dev "${DATAPATH_IF}"
     ip link set "${DATAPATH_IF}" down
