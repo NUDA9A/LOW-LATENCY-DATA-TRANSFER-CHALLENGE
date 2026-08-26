@@ -78,6 +78,8 @@ latency (ns) : min=12526 mean=14641 max=101482
   p99.99     : 47491
 ```
 
+[Latency distribution](docs/benchmarks/20260826-173644045-r20000-n200000-distribution.png) · [Latency tail](docs/benchmarks/20260826-173644045-r20000-n200000-tail.png)
+
 ```text
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -170,6 +172,8 @@ latency (ns) : min=12897 mean=23564 max=96936
   p99.9      : 47285
   p99.99     : 83954
 ```
+
+[Latency distribution](docs/benchmarks/20260826-174448735-r50000-n1000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-174448735-r50000-n1000000-tail.png)
 
 ```text
 === before ===
@@ -264,6 +268,8 @@ latency (ns) : min=12268 mean=24946 max=107275
   p99.99     : 63267
 ```
 
+[Latency distribution](docs/benchmarks/20260826-175807166-r100000-n2000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-175807166-r100000-n2000000-tail.png)
+
 ```text
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -356,6 +362,8 @@ latency (ns) : min=11676 mean=25813 max=154601
   p99.9      : 60836
   p99.99     : 129870
 ```
+
+[Latency distribution](docs/benchmarks/20260826-180149443-r200000-n10000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-180149443-r200000-n10000000-tail.png)
 
 ```text
 === before ===
@@ -450,6 +458,8 @@ latency (ns) : min=11941 mean=26105 max=139147
   p99.99     : 65737
 ```
 
+[Latency distribution](docs/benchmarks/20260826-180454609-r400000-n4000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-180454609-r400000-n4000000-tail.png)
+
 ```text
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -464,7 +474,6 @@ Last offset     : -0.000000028 seconds
 RMS offset      : 0.000000028 seconds
 #* PHC0                          0   0   377     0   -213ns[ -241ns] +/- 5025ns
 ```
-
 
 ### Rate 800'000, Samples 8'000'000
 ### Sender
@@ -543,6 +552,8 @@ latency (ns) : min=13527 mean=28676 max=27034765
   p99.9      : 64261
   p99.99     : 105599
 ```
+
+[Latency distribution](docs/benchmarks/20260826-180656990-r800000-n8000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-180656990-r800000-n8000000-tail.png)
 
 ```text
 === before ===

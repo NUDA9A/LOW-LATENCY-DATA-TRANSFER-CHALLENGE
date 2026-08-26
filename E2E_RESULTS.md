@@ -67,6 +67,8 @@ latency (ns) : min=11614 mean=72211 max=234817
   p99.99     : 217300
 ```
 
+[Latency distribution](docs/benchmarks/20260826-133426557-r20000-n200000-distribution.png) · [Latency tail](docs/benchmarks/20260826-133426557-r20000-n200000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000003 seconds fast of NTP time
@@ -153,6 +155,8 @@ latency (ns) : min=11370 mean=292767 max=962830
   p99.9      : 747844
   p99.99     : 918536
 ```
+
+[Latency distribution](docs/benchmarks/20260826-141219092-r50000-n1000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-141219092-r50000-n1000000-tail.png)
 
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -261,6 +265,8 @@ latency (ns) : min=12726 mean=15552 max=50331
   p99.99     : 39479
 ```
 
+[Latency distribution](docs/benchmarks/20260826-143827157-r20000-n200000-distribution.png) · [Latency tail](docs/benchmarks/20260826-143827157-r20000-n200000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000001 seconds fast of NTP time
@@ -346,6 +352,8 @@ latency (ns) : min=11690 mean=35230 max=97588
   p99.9      : 73081
   p99.99     : 82671
 ```
+
+[Latency distribution](docs/benchmarks/20260826-144527244-r50000-n1000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-144527244-r50000-n1000000-tail.png)
 
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -433,6 +441,8 @@ latency (ns) : min=11650 mean=74455 max=223376
   p99.99     : 202417
 ```
 
+[Latency distribution](docs/benchmarks/20260826-144921997-r100000-n2000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-144921997-r100000-n2000000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000015 seconds slow of NTP time
@@ -519,6 +529,8 @@ latency (ns) : min=11115 mean=193352 max=619078
   p99.99     : 494352
 ```
 
+[Latency distribution](docs/benchmarks/20260826-145224986-r200000-n10000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-145224986-r200000-n10000000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000008 seconds fast of NTP time
@@ -604,6 +616,8 @@ latency (ns) : min=10748 mean=291873 max=637455
   p99.9      : 532675
   p99.99     : 620321
 ```
+
+[Latency distribution](docs/benchmarks/20260826-145650501-r400000-n4000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-145650501-r400000-n4000000-tail.png)
 
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -719,6 +733,8 @@ latency (ns) : min=11767 mean=209542 max=464711
   p99.99     : 461882
 ```
 
+[Latency distribution](docs/benchmarks/20260826-151036302-r20000-n200000-distribution.png) · [Latency tail](docs/benchmarks/20260826-151036302-r20000-n200000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000002 seconds fast of NTP time
@@ -804,6 +820,8 @@ latency (ns) : min=11166 mean=326438 max=813020
   p99.9      : 708040
   p99.99     : 793407
 ```
+
+[Latency distribution](docs/benchmarks/20260826-151410995-r50000-n1000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-151410995-r50000-n1000000-tail.png)
 
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -908,6 +926,8 @@ latency (ns) : min=11816 mean=28525 max=68556
   p99.99     : 65919
 ```
 
+[Latency distribution](docs/benchmarks/20260826-152223075-r20000-n200000-distribution.png) · [Latency tail](docs/benchmarks/20260826-152223075-r20000-n200000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000012 seconds fast of NTP time
@@ -993,6 +1013,8 @@ latency (ns) : min=11066 mean=27754 max=96408
   p99.9      : 81038
   p99.99     : 90419
 ```
+
+[Latency distribution](docs/benchmarks/20260826-152505813-r50000-n1000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-152505813-r50000-n1000000-tail.png)
 
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -1080,6 +1102,8 @@ latency (ns) : min=11198 mean=28400 max=115119
   p99.99     : 111400
 ```
 
+[Latency distribution](docs/benchmarks/20260826-152707772-r100000-n2000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-152707772-r100000-n2000000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000102 seconds fast of NTP time
@@ -1165,6 +1189,8 @@ latency (ns) : min=10126 mean=28204 max=105988
   p99.9      : 67527
   p99.99     : 81929
 ```
+
+[Latency distribution](docs/benchmarks/20260826-152951278-r200000-n10000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-152951278-r200000-n10000000-tail.png)
 
 === before ===
 Reference ID    : 50484330 (PHC0)
@@ -1252,6 +1278,8 @@ latency (ns) : min=13294 mean=28901 max=69033771
   p99.99     : 70817
 ```
 
+[Latency distribution](docs/benchmarks/20260826-153223834-r400000-n4000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-153223834-r400000-n4000000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000036 seconds slow of NTP time
@@ -1338,6 +1366,8 @@ latency (ns) : min=13512 mean=31761 max=75032131
   p99.99     : 101949
 ```
 
+[Latency distribution](docs/benchmarks/20260826-153419350-r800000-n8000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-153419350-r800000-n8000000-tail.png)
+
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000218 seconds slow of NTP time
@@ -1423,6 +1453,8 @@ latency (ns) : min=13546 mean=32107 max=81039369
   p99.9      : 78343
   p99.99     : 148284
 ```
+
+[Latency distribution](docs/benchmarks/20260826-153628761-r1600000-n16000000-distribution.png) · [Latency tail](docs/benchmarks/20260826-153628761-r1600000-n16000000-tail.png)
 
 === before ===
 Reference ID    : 50484330 (PHC0)
