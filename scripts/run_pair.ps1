@@ -96,7 +96,7 @@ function Write-ClockSnapshot
         [string]$Target,
         [string]$Repo,
         [string]$RunDir,
-        [string]$Phase
+        [string]$Phase,
         [string]$LogFile
     )
 
@@ -161,14 +161,14 @@ try {
         $SenderSsh `
         $SenderRepo `
         $SenderRunDir `
-        "before"
+        "before" `
         "sender-run.log"
 
     Write-ClockSnapshot `
         $ReceiverSsh `
         $ReceiverRepo `
         $ReceiverRunDir `
-        "before"
+        "before" `
         "receiver-run.log"
 
 
