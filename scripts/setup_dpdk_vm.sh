@@ -17,8 +17,8 @@ ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 DPDK_VERSION="25.11.2"
 DPDK_DEVBIND="${ROOT}/build/dependencies/dpdk-${DPDK_VERSION}/install/bin/dpdk-devbind.py"
 
-ISOLATED_CORES="2,4"
-HOUSEKEEPING_CORES="0,6"
+ISOLATED_CORES="2,3"
+HOUSEKEEPING_CORES="0,1"
 
 
 pci_bdf_from_netdev()
@@ -198,4 +198,4 @@ mountpoint -q /dev/hugepages ||
 # CPU preflight.
 # -----------------------------------------------------------------------------
 
-"${SCRIPT_DIR}/check_cores.sh" 2 4
+"${SCRIPT_DIR}/check_cores.sh" 2 3

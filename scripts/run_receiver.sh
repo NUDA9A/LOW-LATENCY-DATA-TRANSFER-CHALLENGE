@@ -15,7 +15,7 @@ ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 BINARY="${ROOT}/build/lldt_release/lldt_receiver"
 
-CORE="${LLDT_CORE:-4}"
+CORE="${LLDT_CORE:-3}"
 SHM="${LLDT_SHM:-/fanout_ring}"
 SLOTS="${LLDT_SLOTS:-1024}"
 DATA_PORT="${LLDT_DATA_PORT:-9000}"
