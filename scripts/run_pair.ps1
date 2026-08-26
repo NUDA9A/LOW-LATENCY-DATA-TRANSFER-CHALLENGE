@@ -97,6 +97,7 @@ function Write-ClockSnapshot
         [string]$Repo,
         [string]$RunDir,
         [string]$Phase
+        [string]$LogFile
     )
 
     $Command = @(
@@ -120,7 +121,7 @@ function Write-ClockSnapshot
         "echo '=== chronyc sources ==='"
         "chronyc sources -n -v"
         "echo"
-        "} >> '$RunDir/run.log' 2>&1"
+        "} >> '$RunDir/$LogFile' 2>&1"
     ) -join "`n"
 
     Invoke-Ssh $Target $Command
@@ -161,12 +162,14 @@ try {
         $SenderRepo `
         $SenderRunDir `
         "before"
+        "sender-run.log"
 
     Write-ClockSnapshot `
         $ReceiverSsh `
         $ReceiverRepo `
         $ReceiverRunDir `
         "before"
+        "receiver-run.log"
 
 
     #
@@ -277,7 +280,7 @@ finally {
         "echo '=== chronyc sources ==='"
         "chronyc sources -n -v"
         "echo"
-        "} >> '$SenderRunDir/run.log' 2>&1"
+        "} >> '$SenderRunDir/sender-run.log' 2>&1"
     ) -join "`n"
 
     Invoke-SshBestEffort $SenderSsh $SenderAfter
@@ -294,7 +297,7 @@ finally {
         "echo '=== chronyc sources ==='"
         "chronyc sources -n -v"
         "echo"
-        "} >> '$ReceiverRunDir/run.log' 2>&1"
+        "} >> '$ReceiverRunDir/receiver-run.log' 2>&1"
     ) -join "`n"
 
     Invoke-SshBestEffort $ReceiverSsh $ReceiverAfter
