@@ -21,8 +21,6 @@ if [ "$EUID" -eq 0 ]; then
     exit 1
 fi
 
-sudo -v
-
 sudo apt-get update
 sudo apt-get install --no-install-recommends -y build-essential cmake pkg-config ninja-build python3 python3-venv curl ca-certificates xz-utils libnuma-dev
 
