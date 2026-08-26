@@ -121,7 +121,7 @@ function Write-ClockSnapshot
         "chronyc sources -n -v"
         "echo"
         "} >> '$RunDir/run.log' 2>&1"
-    ) -join "; "
+    ) -join "`n"
 
     Invoke-Ssh $Target $Command
 }
@@ -278,7 +278,7 @@ finally {
         "chronyc sources -n -v"
         "echo"
         "} >> '$SenderRunDir/run.log' 2>&1"
-    ) -join "; "
+    ) -join "`n"
 
     Invoke-SshBestEffort $SenderSsh $SenderAfter
 
@@ -295,7 +295,7 @@ finally {
         "chronyc sources -n -v"
         "echo"
         "} >> '$ReceiverRunDir/run.log' 2>&1"
-    ) -join "; "
+    ) -join "`n"
 
     Invoke-SshBestEffort $ReceiverSsh $ReceiverAfter
 }
