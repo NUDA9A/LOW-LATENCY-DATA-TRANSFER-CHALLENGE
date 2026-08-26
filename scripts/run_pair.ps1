@@ -227,7 +227,7 @@ try {
 
     $ConsumerCommand = @(
         "set -e"
-        "setsid taskset -c 2 '$ReceiverRepo/harness/bin/consumer' --shm '$ShmName' --slots '$Slots' --from-edge --count '$Samples' --csv '$ReceiverRunDir/latency.csv' > '$ReceiverRunDir/consumer.log' 2>&1 < /dev/null & echo `$! > '$ReceiverRunDir/consumer.pid'"
+        "setsid sudo -n taskset -c 2 '$ReceiverRepo/harness/bin/consumer' --shm '$ShmName' --slots '$Slots' --from-edge --count '$Samples' --csv '$ReceiverRunDir/latency.csv' > '$ReceiverRunDir/consumer.log' 2>&1 < /dev/null & echo `$! > '$ReceiverRunDir/consumer.pid'"
         "wait `$(cat '$ReceiverRunDir/consumer.pid')"
     ) -join "; "
 
