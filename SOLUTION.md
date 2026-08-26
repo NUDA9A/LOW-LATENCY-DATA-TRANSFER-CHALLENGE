@@ -1,5 +1,19 @@
 [Resume — Ivan Akimenko](Akimenko_Ivan_resume.pdf)
 
+## Development process and AI assistance
+
+I used **ChatGPT 5.6 Sol** throughout the project as an architecture, planning, and review assistant.
+
+ChatGPT helped me:
+
+- reason about the transport architecture and performance trade-offs;
+- decompose the implementation into small sequential tasks;
+- formulate implementation specifications and acceptance criteria;
+- review completed changes and benchmark results;
+- discuss rejected alternatives and further optimization directions.
+
+The C++ implementation was written and integrated by me. ChatGPT was used primarily for architecture, task specification, technical discussion, and review rather than as an autonomous coding agent.
+
 # Low-Latency Data Transfer Challenge — Solution
 
 ## Overview
@@ -172,9 +186,9 @@ Clock state was captured on both machines before and after every benchmark run. 
 - 2 MiB hugepages configured;
 - datapath NIC bound to `igb_uio`.
 
-The first invocation installs the required persistent GRUB configuration and requires a reboot.
+`setup_dpdk_vm.sh` uses the `dpdk-devbind.py` installed by the local DPDK build, so DPDK must be built before the VM setup script is run for the first time.
 
-Typical first-time setup is therefore:
+Assuming the build steps above have been completed, first-time VM setup is:
 
 ```bash
 sudo ./scripts/setup_dpdk_vm.sh
@@ -186,6 +200,8 @@ After reconnecting:
 ```bash
 sudo ./scripts/setup_dpdk_vm.sh
 ```
+
+The first setup invocation installs the persistent GRUB isolation/hugepage configuration and requests a reboot. The second invocation performs the remaining runtime setup, including binding the datapath NIC to `igb_uio`.
 
 The script expects one management Ethernet device and one separate datapath Ethernet device.
 
@@ -253,6 +269,37 @@ Logs and measurement files are stored on the VMs under:
 ```
 
 The Receiver directory contains `latency.csv` with the per-message latency samples used by `analysis.ipynb` to generate the latency-distribution and percentile-tail plots.
+
+### Plot generation
+
+Raw `latency.csv` files are intentionally not committed to the repository because the larger benchmark runs produce very large files. The generated plots used in the submitted results are committed under `docs/benchmarks/`.
+
+To regenerate plots for downloaded benchmark results, place each CSV under:
+
+```text
+benchmark-results/<RUN-ID>/latency.csv
+```
+
+and run:
+
+```bash
+./scripts/render_latency_plots.sh
+```
+
+The script processes every run under `benchmark-results/`. For each run it creates a temporary working directory, copies the corresponding CSV to the `data/latency.csv` path expected by `analysis.ipynb`, executes a temporary copy of the notebook, and exports:
+
+```text
+<RUN-ID>-distribution.png
+<RUN-ID>-tail.png
+```
+
+into:
+
+```text
+docs/benchmarks/
+```
+
+The committed plots are linked directly from [E2E_RESULTS.md](E2E_RESULTS.md) and [E2E_OPTIMIZED_RESULTS.md](E2E_OPTIMIZED_RESULTS.md).
 
 ### Environment-specific values in `run_pair.ps1`
 
@@ -382,6 +429,42 @@ Keeping this negative experiment in the repository is intentional: it documents 
 
 ---
 
+## Fan-out
+
+The submitted implementation supports **one Sender -> one Receiver**. Multi-receiver fan-out was intentionally left outside the final implemented scope so that the baseline DPDK datapath could first be completed, measured, and optimized end-to-end.
+
+The current architecture can be extended to a small number of receivers without changing the upstream Sender pipeline.
+
+The intended software fan-out design would keep:
+
+```text
+Producer SHM
+    -> SenderShmReader
+    -> validation
+    -> source-frame batching
+    -> canonical LLDT Data packet
+```
+
+as a single shared path.
+
+After a canonical LLDT Data packet has been constructed once, a fan-out stage would replicate it to a configured receiver set. Each receiver would have a precomputed destination descriptor containing its L2/L3 addressing information, while the source validation and batching work would not be repeated per receiver.
+
+Conceptually:
+
+```text
+                         -> destination A -> DPDK TX
+canonical Data packet ---+-> destination B -> DPDK TX
+                         -> destination C -> DPDK TX
+```
+
+For the small fan-out sizes mentioned in the challenge (`1-3` receivers), direct software replication is the simplest extension. Destination-specific Ethernet/IP headers and mbuf ownership would belong to the fan-out/TX stage.
+
+The LLDT `data_seq` can remain stream-global: all receivers observe the same logical Data-packet sequence, and the current Receiver already establishes its expected sequence from the first accepted packet. A later control plane could add dynamic receiver registration and membership management.
+
+For substantially larger receiver counts, L2 multicast would also be worth evaluating where the deployment network supports it, because it can avoid linearly replicating packets in the Sender.
+
+---
+
 ## Final configuration
 
 The final submitted datapath prioritizes a small hot path and reduced packet rate:
@@ -398,4 +481,4 @@ minimal RX parsing / direct SHM publication
 
 The main performance gain came from reducing the number of network packets required for the market-data stream, rather than from adding additional buffering or retry machinery to the TX path.
 
-The current submission is intentionally a minimal unicast datapath. Application-level retransmission/FEC and a dynamic multi-receiver control plane are outside the final implemented scope.
+The current submission is intentionally a minimal, measured unicast datapath. Multi-receiver fan-out, dynamic membership, and application-level retransmission/FEC are not implemented in the submitted version; the intended fan-out extension is described above.
