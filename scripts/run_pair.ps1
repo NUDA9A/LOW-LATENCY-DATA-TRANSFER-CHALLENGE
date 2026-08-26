@@ -1,726 +1,299 @@
 ﻿param(
-    [string]$SshKeyPath = "$HOME\.ssh\ssh-key-1787325222691",
+    [Parameter(Mandatory = $true)]
+    [long]$Rate,
 
-    [string]$SenderSsh = "sender@89.169.186.8",
-    [string]$ReceiverSsh = "receiver@89.169.182.89",
+    [Parameter(Mandatory = $true)]
+    [long]$Samples,
 
-    [string]$SenderRepo = "/home/sender/projects/low-latency-data-transfer-challenge",
-    [string]$ReceiverRepo = "/home/receiver/projects/low-latency-data-transfer-challenge",
-
-    [string]$SenderManagementIp = "10.129.0.17",
-    [string]$SenderDataIp = "10.131.0.4",
-    [string]$ReceiverDataIp = "10.131.0.24",
-    [string]$NextHopMac = "00:00:5e:00:01:00",
-
-    [ValidateSet("raw", "compact")]
-    [string]$Profile = "raw",
-
-    [switch]$Batching,
-    [switch]$SkipBuild,
-
-    [ValidateSet("trade", "bbo", "book", "mixed")]
-    [string]$MessageType = "mixed",
-
-    [int]$Rate = 200000,
-    [int]$Samples = 1000000,
-    [int]$WarmupSeconds = 5,
-    [int]$Slots = 1024,
-    [int]$DataPort = 9000,
-    [string]$ShmName = "/fanout_ring",
-
-    [int]$GoLeadSeconds = 10,
-    [string]$RemoteResultRoot = "/var/tmp/lldt-benchmark",
-    [string]$OutputRoot = ".\results"
+    [switch]$Batching
 )
 
-Set-StrictMode -Version Latest
-$ErrorActionPreference = "Stop"
-
 if ($Rate -le 0) {
-    throw "Rate must be > 0 for controlled benchmark runs."
+    throw "Rate must be > 0."
 }
 
 if ($Samples -le 0) {
     throw "Samples must be > 0."
 }
 
+
+$SshKeyPath = "$HOME\.ssh\lldt.pem"
+
+$SenderSsh   = "ubuntu@51.20.212.52"
+$ReceiverSsh = "ubuntu@51.21.142.26"
+
+$SenderRepo   = "/home/ubuntu/projects/low-latency-data-transfer-challenge"
+$ReceiverRepo = "/home/ubuntu/projects/low-latency-data-transfer-challenge"
+
+$SenderDataIp   = "10.0.1.10"
+$ReceiverDataIp = "10.0.1.20"
+
+$SenderNextHopMac   = "06:cd:a3:3f:bc:bb"
+$ReceiverNextHopMac = "06:76:72:0f:0d:89"
+
+$ShmName = "/fanout_ring"
+$Slots = 1024
+$WarmupSeconds = 5
+
+
 if (-not (Test-Path -LiteralPath $SshKeyPath -PathType Leaf)) {
     throw "SSH key not found: $SshKeyPath"
 }
 
-$SshKeyPath = (Resolve-Path -LiteralPath $SshKeyPath).Path
 
 $SshOptions = @(
     "-T",
-    "-n",
     "-i", $SshKeyPath,
     "-o", "IdentitiesOnly=yes",
     "-o", "BatchMode=yes",
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-o", "ConnectTimeout=8",
-    "-o", "ConnectionAttempts=1",
-    "-o", "ServerAliveInterval=10",
-    "-o", "ServerAliveCountMax=2"
-)
-
-$ScpOptions = @(
-    "-i", $SshKeyPath,
-    "-o", "IdentitiesOnly=yes",
-    "-o", "BatchMode=yes",
-    "-o", "StrictHostKeyChecking=accept-new",
-    "-o", "ConnectTimeout=8",
-    "-o", "ConnectionAttempts=1"
+    "-o", "StrictHostKeyChecking=accept-new"
 )
 
 
-# -----------------------------------------------------------------------------
-# Native process wrapper.
-#
-# We intentionally do not invoke ssh.exe/scp.exe through PowerShell's "&"
-# operator. In Windows PowerShell, stderr from a successful native command can
-# be promoted to NativeCommandError when $ErrorActionPreference = "Stop".
-#
-# This wrapper uses the real Process.ExitCode and keeps stdout/stderr separate.
-# -----------------------------------------------------------------------------
+$RunId = "{0}-r{1}-n{2}" -f `
+    (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss"), `
+    $Rate, `
+    $Samples
 
-function Quote-NativeArgument {
+$SenderRunDir   = "/var/tmp/lldt-benchmark/$RunId"
+$ReceiverRunDir = "/var/tmp/lldt-benchmark/$RunId"
+
+$BatchingValue = if ($Batching) { "on" } else { "off" }
+$BatchingArg = if ($Batching) { "--batching" } else { "" }
+
+
+function Invoke-Ssh
+{
     param(
-        [AllowEmptyString()]
-        [string]$Value
+        [string]$Target,
+        [string]$Command
     )
 
-    if ($null -eq $Value -or $Value.Length -eq 0) {
-        return '""'
+    & ssh.exe @SshOptions $Target $Command
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "SSH command failed on $Target with exit code $LASTEXITCODE."
     }
-
-    if ($Value -notmatch '[\s"]') {
-        return $Value
-    }
-
-    $builder = New-Object System.Text.StringBuilder
-    [void]$builder.Append('"')
-
-    $slashes = 0
-
-    foreach ($ch in $Value.ToCharArray()) {
-        if ($ch -eq '\') {
-            ++$slashes
-            continue
-        }
-
-        if ($ch -eq '"') {
-            if ($slashes -gt 0) {
-                [void]$builder.Append((('\' * ($slashes * 2)) -join ''))
-            }
-
-            [void]$builder.Append('\')
-            [void]$builder.Append('"')
-            $slashes = 0
-            continue
-        }
-
-        if ($slashes -gt 0) {
-            [void]$builder.Append((('\' * $slashes) -join ''))
-            $slashes = 0
-        }
-
-        [void]$builder.Append($ch)
-    }
-
-    # Backslashes immediately before the terminating quote must be doubled.
-    if ($slashes -gt 0) {
-        [void]$builder.Append((('\' * ($slashes * 2)) -join ''))
-    }
-
-    [void]$builder.Append('"')
-    return $builder.ToString()
 }
 
 
-function Join-NativeArguments {
+function Invoke-SshBestEffort
+{
     param(
-        [string[]]$Arguments
+        [string]$Target,
+        [string]$Command
     )
 
-    $parts = foreach ($arg in $Arguments) {
-        Quote-NativeArgument $arg
-    }
-
-    return ($parts -join " ")
+    & ssh.exe @SshOptions $Target $Command 2>$null | Out-Null
 }
 
 
-function Invoke-NativeCapture {
+function Write-ClockSnapshot
+{
     param(
-        [string]$FilePath,
-        [string[]]$Arguments,
-        [int]$TimeoutSeconds = 30
-    )
-
-    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
-    $startInfo.FileName = $FilePath
-    $startInfo.Arguments = Join-NativeArguments $Arguments
-    $startInfo.UseShellExecute = $false
-    $startInfo.CreateNoWindow = $true
-    $startInfo.RedirectStandardOutput = $true
-    $startInfo.RedirectStandardError = $true
-
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $startInfo
-
-    try {
-        if (-not $process.Start()) {
-            throw "Could not start $FilePath."
-        }
-
-        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
-        $stderrTask = $process.StandardError.ReadToEndAsync()
-
-        $finished = $process.WaitForExit($TimeoutSeconds * 1000)
-
-        if (-not $finished) {
-            try {
-                $process.Kill()
-            }
-            catch {
-            }
-
-            try {
-                $process.WaitForExit()
-            }
-            catch {
-            }
-
-            $stdout = ""
-            $stderr = ""
-
-            try {
-                $stdout = $stdoutTask.GetAwaiter().GetResult()
-            }
-            catch {
-            }
-
-            try {
-                $stderr = $stderrTask.GetAwaiter().GetResult()
-            }
-            catch {
-            }
-
-            return [PSCustomObject]@{
-                ExitCode = $null
-                TimedOut = $true
-                StdOut   = $stdout.Trim()
-                StdErr   = $stderr.Trim()
-            }
-        }
-
-        # Complete async stdout/stderr draining.
-        $process.WaitForExit()
-
-        $stdout = $stdoutTask.GetAwaiter().GetResult()
-        $stderr = $stderrTask.GetAwaiter().GetResult()
-        $exitCode = $process.ExitCode
-
-        return [PSCustomObject]@{
-            ExitCode = $exitCode
-            TimedOut = $false
-            StdOut   = $stdout.Trim()
-            StdErr   = $stderr.Trim()
-        }
-    }
-    finally {
-        $process.Dispose()
-    }
-}
-
-
-function Invoke-SshText {
-    param(
-        [string]$HostName,
-        [string]$Command,
-        [int]$Attempts = 3,
-        [int]$TimeoutSeconds = 30
-    )
-
-    $last = $null
-
-    for ($attempt = 1; $attempt -le $Attempts; ++$attempt) {
-        $last = Invoke-NativeCapture `
-            "ssh.exe" `
-            ($SshOptions + @($HostName, $Command)) `
-            $TimeoutSeconds
-
-        if (-not $last.TimedOut -and $last.ExitCode -eq 0) {
-            # stderr is diagnostic output only. A zero ssh.exe exit code is
-            # authoritative, e.g. systemd-run may print "Running as unit..."
-            # to stderr on a completely successful launch.
-            return $last.StdOut
-        }
-
-        if ($attempt -lt $Attempts) {
-            Start-Sleep -Seconds 2
-        }
-    }
-
-    if ($last.TimedOut) {
-        $reason = "local timeout after $TimeoutSeconds s"
-    }
-    else {
-        $reason = "exit=$($last.ExitCode)"
-    }
-
-    $details = $reason
-
-    if ($last.StdOut.Length -gt 0) {
-        $details += "`nstdout:`n$($last.StdOut)"
-    }
-
-    if ($last.StdErr.Length -gt 0) {
-        $details += "`nstderr:`n$($last.StdErr)"
-    }
-
-    throw "SSH command failed on $HostName after $Attempts attempt(s):`n$details"
-}
-
-
-function Copy-RemoteDirectory {
-    param(
-        [string]$HostName,
-        [string]$RemotePath,
-        [string]$LocalParent,
-        [string]$ExpectedLocalDirectory,
-        [int]$Attempts = 3,
-        [int]$TimeoutSeconds = 120
-    )
-
-    $last = $null
-
-    for ($attempt = 1; $attempt -le $Attempts; ++$attempt) {
-        $last = Invoke-NativeCapture `
-            "scp.exe" `
-            ($ScpOptions + @("-r", "${HostName}:$RemotePath", $LocalParent)) `
-            $TimeoutSeconds
-
-        if (
-            -not $last.TimedOut -and
-            $last.ExitCode -eq 0 -and
-            (Test-Path -LiteralPath $ExpectedLocalDirectory -PathType Container)
-        ) {
-            return
-        }
-
-        if ($attempt -lt $Attempts) {
-            Start-Sleep -Seconds 2
-        }
-    }
-
-    if ($last.TimedOut) {
-        $reason = "local timeout after $TimeoutSeconds s"
-    }
-    else {
-        $reason = "exit=$($last.ExitCode)"
-    }
-
-    $details = $reason
-
-    if ($last.StdOut.Length -gt 0) {
-        $details += "`nstdout:`n$($last.StdOut)"
-    }
-
-    if ($last.StdErr.Length -gt 0) {
-        $details += "`nstderr:`n$($last.StdErr)"
-    }
-
-    throw "SCP failed for ${HostName}:$RemotePath`n$details"
-}
-
-
-function Get-RemoteStatus {
-    param(
-        [string]$HostName,
-        [string]$RunDir
-    )
-
-    $text = Invoke-SshText `
-        $HostName `
-        "cat '$RunDir/status' 2>/dev/null || true"
-
-    foreach ($line in ($text -split "`r?`n")) {
-        $value = $line.Trim()
-
-        if ($value -match '^(PREPARING|READY|RUNNING|DONE|FAILED(?:\s+[0-9]+)?)$') {
-            return $value
-        }
-    }
-
-    return ""
-}
-
-
-function Get-RemoteCommit {
-    param(
-        [string]$HostName,
-        [string]$RunDir
-    )
-
-    $text = Invoke-SshText `
-        $HostName `
-        "cat '$RunDir/commit' 2>/dev/null || true"
-
-    foreach ($line in ($text -split "`r?`n")) {
-        $value = $line.Trim()
-
-        if ($value -match '^[0-9a-fA-F]{40}$') {
-            return $value.ToLowerInvariant()
-        }
-    }
-
-    return ""
-}
-
-
-function Get-SenderEpoch {
-    for ($attempt = 1; $attempt -le 10; ++$attempt) {
-        try {
-            $text = Invoke-SshText `
-                $SenderSsh `
-                "date +%s" `
-                1 `
-                15
-
-            foreach ($line in ($text -split "`r?`n")) {
-                $value = $line.Trim()
-
-                if ($value -match '^[0-9]+$') {
-                    return [Int64]$value
-                }
-            }
-        }
-        catch {
-        }
-
-        Start-Sleep -Seconds 1
-    }
-
-    throw "Could not read Sender clock."
-}
-
-
-function Set-RemoteGo {
-    param(
-        [string]$HostName,
-        [string]$RunDir,
-        [Int64]$GoEpoch
-    )
-
-    for ($attempt = 1; $attempt -le 10; ++$attempt) {
-        try {
-            $command =
-                "printf '%s\n' '$GoEpoch' | " +
-                "sudo -n tee '$RunDir/go' >/dev/null && " +
-                "cat '$RunDir/go'"
-
-            $text = Invoke-SshText `
-                $HostName `
-                $command `
-                1 `
-                15
-
-            foreach ($line in ($text -split "`r?`n")) {
-                if ($line.Trim() -eq "$GoEpoch") {
-                    return
-                }
-            }
-        }
-        catch {
-        }
-
-        Start-Sleep -Seconds 1
-    }
-
-    throw "Could not deliver GO to $HostName."
-}
-
-
-function Wait-ForReady {
-    param(
-        [string]$SenderRunDir,
-        [string]$ReceiverRunDir,
-        [int]$TimeoutSeconds = 1200
-    )
-
-    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
-
-    while ((Get-Date) -lt $deadline) {
-        try {
-            $senderStatus = Get-RemoteStatus $SenderSsh $SenderRunDir
-        }
-        catch {
-            $senderStatus = "SSH?"
-        }
-
-        try {
-            $receiverStatus = Get-RemoteStatus $ReceiverSsh $ReceiverRunDir
-        }
-        catch {
-            $receiverStatus = "SSH?"
-        }
-
-        Write-Host "Prepare: sender=$senderStatus receiver=$receiverStatus"
-
-        if ($senderStatus.StartsWith("FAILED")) {
-            throw "Sender benchmark node failed during preparation."
-        }
-
-        if ($receiverStatus.StartsWith("FAILED")) {
-            throw "Receiver benchmark node failed during preparation."
-        }
-
-        if ($senderStatus -eq "READY" -and $receiverStatus -eq "READY") {
-            return
-        }
-
-        Start-Sleep -Seconds 2
-    }
-
-    throw "Timed out waiting for benchmark nodes to become READY."
-}
-
-
-function Copy-RoleArtifacts {
-    param(
-        [string]$HostName,
-        [string]$RemoteRoleDir,
-        [string]$LocalRunDir,
-        [string]$Role
-    )
-
-    $localRoleDir = Join-Path $LocalRunDir $Role
-
-    if (Test-Path -LiteralPath $localRoleDir) {
-        Remove-Item -LiteralPath $localRoleDir -Recurse -Force
-    }
-
-    Copy-RemoteDirectory `
-        $HostName `
-        $RemoteRoleDir `
-        $LocalRunDir `
-        $localRoleDir `
-        3 `
-        180
-
-    if (-not (Test-Path -LiteralPath (Join-Path $localRoleDir "status") -PathType Leaf)) {
-        throw "Collected $Role directory does not contain status file."
-    }
-}
-
-
-$RunId = (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss")
-$SenderRunDir = "$RemoteResultRoot/$RunId/sender"
-$ReceiverRunDir = "$RemoteResultRoot/$RunId/receiver"
-
-$LocalRunDir = Join-Path $OutputRoot $RunId
-New-Item -ItemType Directory -Force $LocalRunDir | Out-Null
-
-$ExpectedSeconds = [int][Math]::Ceiling([double]$Samples / [double]$Rate)
-$MeasurementTimeout = [Math]::Max(15, $ExpectedSeconds * 3)
-$BatchingValue = if ($Batching) { 1 } else { 0 }
-$SkipBuildValue = if ($SkipBuild) { 1 } else { 0 }
-
-
-function New-LaunchCommand {
-    param(
+        [string]$Target,
         [string]$Repo,
-        [string]$Role
+        [string]$RunDir,
+        [string]$Phase
     )
 
-    return (
-        "cd '$Repo' && " +
-        "sudo -n ./scripts/launch_benchmark_node.sh " +
-        "--role '$Role' " +
-        "--run-id '$RunId' " +
-        "--profile '$Profile' " +
-        "--batching '$BatchingValue' " +
-        "--rate '$Rate' " +
-        "--samples '$Samples' " +
-        "--message-type '$MessageType' " +
-        "--warmup-seconds '$WarmupSeconds' " +
-        "--slots '$Slots' " +
-        "--data-port '$DataPort' " +
-        "--shm '$ShmName' " +
-        "--sender-data-ip '$SenderDataIp' " +
-        "--receiver-data-ip '$ReceiverDataIp' " +
-        "--next-hop-mac '$NextHopMac' " +
-        "--sender-management-ip '$SenderManagementIp' " +
-        "--measurement-timeout '$MeasurementTimeout' " +
-        "--skip-build '$SkipBuildValue'"
-    )
+    $Command = @(
+        "mkdir -p '$RunDir'"
+        "{"
+        "echo '=== $Phase ==='"
+        "date -u --iso-8601=ns"
+        "echo 'rate=$Rate'"
+        "echo 'samples=$Samples'"
+        "echo 'batching=$BatchingValue'"
+        "echo"
+        "echo '=== commit ==='"
+        "git -C '$Repo' rev-parse HEAD"
+        "echo"
+        "echo '=== chronyc tracking ==='"
+        "chronyc tracking"
+        "echo"
+        "echo '=== chronyc sources ==='"
+        "chronyc sources -n -v"
+        "echo"
+        "} >> '$RunDir/run.log' 2>&1"
+    ) -join "; "
+
+    Invoke-Ssh $Target $Command
 }
 
 
-Write-Host "Run:                 $RunId"
-Write-Host "Profile:             $Profile"
-Write-Host "Batching:            $([bool]$Batching)"
-Write-Host "Rate:                $Rate msg/s"
-Write-Host "Samples:             $Samples"
-Write-Host "Measurement timeout: $MeasurementTimeout s"
+function Stop-RemoteGroup
+{
+    param(
+        [string]$Target,
+        [string]$PidFile,
+        [string]$Signal
+    )
+
+    $Command =
+        "if [ -s '$PidFile' ]; then " +
+        "xargs -r -I{} kill -$Signal -- -{} < '$PidFile' 2>/dev/null || true; " +
+        "fi"
+
+    Invoke-SshBestEffort $Target $Command
+}
+
+
+Write-Host "Run:      $RunId"
+Write-Host "Rate:     $Rate msg/s"
+Write-Host "Samples:  $Samples"
+Write-Host "Batching: $BatchingValue"
 Write-Host
 
 
-Write-Host "Launching Receiver benchmark node..."
-[void](
-    Invoke-SshText `
-        $ReceiverSsh `
-        (New-LaunchCommand $ReceiverRepo "receiver") `
-        3 `
-        20
-)
-
-
-Write-Host "Launching Sender benchmark node..."
-[void](
-    Invoke-SshText `
+try {
+    Write-ClockSnapshot `
         $SenderSsh `
-        (New-LaunchCommand $SenderRepo "sender") `
-        3 `
-        20
-)
+        $SenderRepo `
+        $SenderRunDir `
+        "before"
+
+    Write-ClockSnapshot `
+        $ReceiverSsh `
+        $ReceiverRepo `
+        $ReceiverRunDir `
+        "before"
 
 
-Write-Host "Waiting for local preparation/build on both VMs..."
-Wait-ForReady $SenderRunDir $ReceiverRunDir
+    #
+    # Receiver must be ready before Sender starts transmitting.
+    #
+
+    Write-Host "Starting Receiver..."
+
+    $ReceiverCommand = @(
+        "set -e"
+        "mkdir -p '$ReceiverRunDir'"
+        "rm -f /dev/shm/${ShmName#/}"
+        "setsid '$ReceiverRepo/scripts/run_receiver.sh' '$ReceiverDataIp' '$SenderDataIp' '$ReceiverNextHopMac' > '$ReceiverRunDir/receiver.log' 2>&1 < /dev/null & echo `$! > '$ReceiverRunDir/receiver.pid'"
+    ) -join "; "
+
+    Invoke-Ssh $ReceiverSsh $ReceiverCommand
+
+    Start-Sleep -Seconds 1
 
 
-$SenderCommit = Get-RemoteCommit $SenderSsh $SenderRunDir
-$ReceiverCommit = Get-RemoteCommit $ReceiverSsh $ReceiverRunDir
+    #
+    # Producer owns the Sender input SHM, so start it before Sender.
+    #
 
-if ($SenderCommit.Length -eq 0 -or $ReceiverCommit.Length -eq 0) {
-    throw "Could not read benchmark commit from both nodes."
+    Write-Host "Starting Producer..."
+
+    $ProducerCommand = @(
+        "set -e"
+        "mkdir -p '$SenderRunDir'"
+        "rm -f /dev/shm/${ShmName#/}"
+        "setsid taskset -c 2 '$SenderRepo/harness/bin/producer' --shm '$ShmName' --slots '$Slots' --count 0 --rate '$Rate' --type mixed > '$SenderRunDir/producer.log' 2>&1 < /dev/null & echo `$! > '$SenderRunDir/producer.pid'"
+    ) -join "; "
+
+    Invoke-Ssh $SenderSsh $ProducerCommand
+
+    Start-Sleep -Milliseconds 100
+
+
+    Write-Host "Starting Sender..."
+
+    $SenderCommand = @(
+        "set -e"
+        "setsid '$SenderRepo/scripts/run_sender.sh' '$SenderDataIp' '$ReceiverDataIp' '$SenderNextHopMac' $BatchingArg > '$SenderRunDir/sender.log' 2>&1 < /dev/null & echo `$! > '$SenderRunDir/sender.pid'"
+    ) -join "; "
+
+    Invoke-Ssh $SenderSsh $SenderCommand
+
+
+    #
+    # Let the complete pipeline reach steady state before Consumer begins
+    # measuring from the live edge of the output ring.
+    #
+
+    Write-Host "Warm-up: $WarmupSeconds s..."
+    Start-Sleep -Seconds $WarmupSeconds
+
+
+    #
+    # This SSH command intentionally remains open until Consumer has received
+    # exactly Samples messages or exits because of its own idle timeout.
+    #
+
+    Write-Host "Starting Consumer..."
+
+    $ConsumerCommand = @(
+        "set -e"
+        "setsid taskset -c 2 '$ReceiverRepo/harness/bin/consumer' --shm '$ShmName' --slots '$Slots' --from-edge --count '$Samples' --csv '$ReceiverRunDir/latency.csv' > '$ReceiverRunDir/consumer.log' 2>&1 < /dev/null & echo `$! > '$ReceiverRunDir/consumer.pid'"
+        "wait `$(cat '$ReceiverRunDir/consumer.pid')"
+    ) -join "; "
+
+    Invoke-Ssh $ReceiverSsh $ConsumerCommand
+
+    Write-Host "Consumer finished."
 }
+finally {
+    Write-Host "Stopping processes..."
 
-if ($SenderCommit -ne $ReceiverCommit) {
-    throw "Commit mismatch: sender=$SenderCommit receiver=$ReceiverCommit"
-}
+    Stop-RemoteGroup `
+        $ReceiverSsh `
+        "$ReceiverRunDir/consumer.pid" `
+        "INT"
 
-Write-Host "Commit: $SenderCommit"
+    Stop-RemoteGroup `
+        $SenderSsh `
+        "$SenderRunDir/producer.pid" `
+        "INT"
 
+    Stop-RemoteGroup `
+        $SenderSsh `
+        "$SenderRunDir/sender.pid" `
+        "INT"
 
-$SenderEpoch = Get-SenderEpoch
-$GoEpoch = $SenderEpoch + $GoLeadSeconds
+    Stop-RemoteGroup `
+        $ReceiverSsh `
+        "$ReceiverRunDir/receiver.pid" `
+        "INT"
 
-Write-Host "GO epoch: $GoEpoch (Sender clock, +$GoLeadSeconds s)"
-
-
-Set-RemoteGo $ReceiverSsh $ReceiverRunDir $GoEpoch
-Set-RemoteGo $SenderSsh $SenderRunDir $GoEpoch
-
-
-$Manifest = [ordered]@{
-    run_id = $RunId
-    commit = $SenderCommit
-    go_epoch = $GoEpoch
-
-    profile = $Profile
-    batching = [bool]$Batching
-
-    rate = $Rate
-    samples = $Samples
-    message_type = $MessageType
-    warmup_seconds = $WarmupSeconds
-    measurement_timeout_seconds = $MeasurementTimeout
-
-    slots = $Slots
-    data_port = $DataPort
-    shm = $ShmName
-
-    sender_ssh = $SenderSsh
-    receiver_ssh = $ReceiverSsh
-
-    sender_management_ip = $SenderManagementIp
-    sender_data_ip = $SenderDataIp
-    receiver_data_ip = $ReceiverDataIp
-    next_hop_mac = $NextHopMac
-}
-
-$Manifest |
-    ConvertTo-Json -Depth 4 |
-    Set-Content (Join-Path $LocalRunDir "manifest.json")
-
-
-$QuietSeconds =
-    $GoLeadSeconds +
-    $WarmupSeconds +
-    $MeasurementTimeout +
-    5
-
-Write-Host
-Write-Host "Benchmark is autonomous now."
-Write-Host "No SSH activity for $QuietSeconds s..."
-Start-Sleep -Seconds $QuietSeconds
-
-
-$SenderStatus = ""
-$ReceiverStatus = ""
-
-for ($attempt = 1; $attempt -le 10; ++$attempt) {
-    try {
-        $SenderStatus = Get-RemoteStatus $SenderSsh $SenderRunDir
-    }
-    catch {
-        $SenderStatus = "SSH?"
-    }
-
-    try {
-        $ReceiverStatus = Get-RemoteStatus $ReceiverSsh $ReceiverRunDir
-    }
-    catch {
-        $ReceiverStatus = "SSH?"
-    }
-
-    if (
-        $SenderStatus -ne "RUNNING" -and
-        $ReceiverStatus -ne "RUNNING" -and
-        $SenderStatus -ne "SSH?" -and
-        $ReceiverStatus -ne "SSH?"
-    ) {
-        break
-    }
-
+    # Give Sender/Receiver enough time to print their final counters.
     Start-Sleep -Seconds 2
-}
 
-Write-Host "Final status: sender=$SenderStatus receiver=$ReceiverStatus"
+    $SenderAfter = @(
+        "{"
+        "echo '=== after ==='"
+        "date -u --iso-8601=ns"
+        "echo"
+        "echo '=== chronyc tracking ==='"
+        "chronyc tracking"
+        "echo"
+        "echo '=== chronyc sources ==='"
+        "chronyc sources -n -v"
+        "echo"
+        "} >> '$SenderRunDir/run.log' 2>&1"
+    ) -join "; "
 
-
-Write-Host "Collecting artifacts..."
-Copy-RoleArtifacts $SenderSsh $SenderRunDir $LocalRunDir "sender"
-Copy-RoleArtifacts $ReceiverSsh $ReceiverRunDir $LocalRunDir "receiver"
-
-
-$LocalSenderStatus =
-    (Get-Content (Join-Path $LocalRunDir "sender\status") -Raw).Trim()
-
-$LocalReceiverStatus =
-    (Get-Content (Join-Path $LocalRunDir "receiver\status") -Raw).Trim()
-
-
-if ($LocalSenderStatus -ne "DONE" -or $LocalReceiverStatus -ne "DONE") {
-    throw (
-        "Benchmark failed. " +
-        "sender=$LocalSenderStatus receiver=$LocalReceiverStatus. " +
-        "Artifacts: $LocalRunDir"
-    )
-}
+    Invoke-SshBestEffort $SenderSsh $SenderAfter
 
 
-$LatencyCsv =
-    Join-Path $LocalRunDir "receiver\latency.csv"
+    $ReceiverAfter = @(
+        "{"
+        "echo '=== after ==='"
+        "date -u --iso-8601=ns"
+        "echo"
+        "echo '=== chronyc tracking ==='"
+        "chronyc tracking"
+        "echo"
+        "echo '=== chronyc sources ==='"
+        "chronyc sources -n -v"
+        "echo"
+        "} >> '$ReceiverRunDir/run.log' 2>&1"
+    ) -join "; "
 
-if (-not (Test-Path -LiteralPath $LatencyCsv -PathType Leaf)) {
-    throw "Benchmark completed without latency.csv: $LocalRunDir"
+    Invoke-SshBestEffort $ReceiverSsh $ReceiverAfter
 }
 
 
 Write-Host
-Write-Host "Benchmark completed successfully:"
-Write-Host "  $LocalRunDir"
+Write-Host "Run completed."
+Write-Host "Sender:   $SenderRunDir"
+Write-Host "Receiver: $ReceiverRunDir"
