@@ -32,6 +32,8 @@ $SenderNextHopMac   = "06:cd:a3:3f:bc:bb"
 $ReceiverNextHopMac = "06:76:72:0f:0d:89"
 
 $ShmName = "/fanout_ring"
+$ShmFile = $ShmName.TrimStart("/")
+
 $Slots = 1024
 $WarmupSeconds = 5
 
@@ -51,7 +53,7 @@ $SshOptions = @(
 
 
 $RunId = "{0}-r{1}-n{2}" -f `
-    (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmss"), `
+    (Get-Date).ToUniversalTime().ToString("yyyyMMdd-HHmmssfff"), `
     $Rate, `
     $Samples
 
@@ -109,6 +111,9 @@ function Write-ClockSnapshot
         "echo '=== commit ==='"
         "git -C '$Repo' rev-parse HEAD"
         "echo"
+        "echo '=== message profile ==='"
+        "grep '^LLDT_MESSAGE_PROFILE:' '$Repo/build/lldt_release/CMakeCache.txt' || true"
+        "echo"
         "echo '=== chronyc tracking ==='"
         "chronyc tracking"
         "echo"
@@ -147,6 +152,10 @@ Write-Host
 
 
 try {
+    #
+    # Record benchmark clock state before starting datapath processes.
+    #
+
     Write-ClockSnapshot `
         $SenderSsh `
         $SenderRepo `
@@ -161,7 +170,7 @@ try {
 
 
     #
-    # Receiver must be ready before Sender starts transmitting.
+    # Receiver first.
     #
 
     Write-Host "Starting Receiver..."
@@ -169,46 +178,40 @@ try {
     $ReceiverCommand = @(
         "set -e"
         "mkdir -p '$ReceiverRunDir'"
-        "rm -f /dev/shm/${ShmName#/}"
+        "rm -f '/dev/shm/$ShmFile'"
         "setsid '$ReceiverRepo/scripts/run_receiver.sh' '$ReceiverDataIp' '$SenderDataIp' '$ReceiverNextHopMac' > '$ReceiverRunDir/receiver.log' 2>&1 < /dev/null & echo `$! > '$ReceiverRunDir/receiver.pid'"
+        "sleep 1"
+        "kill -0 `$(cat '$ReceiverRunDir/receiver.pid')"
     ) -join "; "
 
     Invoke-Ssh $ReceiverSsh $ReceiverCommand
 
-    Start-Sleep -Seconds 1
-
 
     #
-    # Producer owns the Sender input SHM, so start it before Sender.
+    # Producer creates the input SHM. As soon as the SHM exists, start Sender.
+    # SenderShmReader attaches at the live edge, so pre-attach producer frames
+    # are intentionally outside the transport stream.
     #
 
-    Write-Host "Starting Producer..."
-
-    $ProducerCommand = @(
-        "set -e"
-        "mkdir -p '$SenderRunDir'"
-        "rm -f /dev/shm/${ShmName#/}"
-        "setsid taskset -c 2 '$SenderRepo/harness/bin/producer' --shm '$ShmName' --slots '$Slots' --count 0 --rate '$Rate' --type mixed > '$SenderRunDir/producer.log' 2>&1 < /dev/null & echo `$! > '$SenderRunDir/producer.pid'"
-    ) -join "; "
-
-    Invoke-Ssh $SenderSsh $ProducerCommand
-
-    Start-Sleep -Milliseconds 100
-
-
-    Write-Host "Starting Sender..."
+    Write-Host "Starting Producer and Sender..."
 
     $SenderCommand = @(
         "set -e"
+        "mkdir -p '$SenderRunDir'"
+        "rm -f '/dev/shm/$ShmFile'"
+        "setsid taskset -c 2 '$SenderRepo/harness/bin/producer' --shm '$ShmName' --slots '$Slots' --count 0 --rate '$Rate' --type mixed > '$SenderRunDir/producer.log' 2>&1 < /dev/null & echo `$! > '$SenderRunDir/producer.pid'"
+        "for i in `$(seq 1 1000); do [ -e '/dev/shm/$ShmFile' ] && break; sleep 0.001; done"
+        "[ -e '/dev/shm/$ShmFile' ]"
         "setsid '$SenderRepo/scripts/run_sender.sh' '$SenderDataIp' '$ReceiverDataIp' '$SenderNextHopMac' $BatchingArg > '$SenderRunDir/sender.log' 2>&1 < /dev/null & echo `$! > '$SenderRunDir/sender.pid'"
+        "sleep 1"
+        "kill -0 `$(cat '$SenderRunDir/sender.pid')"
     ) -join "; "
 
     Invoke-Ssh $SenderSsh $SenderCommand
 
 
     #
-    # Let the complete pipeline reach steady state before Consumer begins
-    # measuring from the live edge of the output ring.
+    # Warm-up is outside the measured consumer interval.
     #
 
     Write-Host "Warm-up: $WarmupSeconds s..."
@@ -216,8 +219,8 @@ try {
 
 
     #
-    # This SSH command intentionally remains open until Consumer has received
-    # exactly Samples messages or exits because of its own idle timeout.
+    # Consumer attaches at the current output-ring live edge and measures
+    # exactly Samples delivered frames.
     #
 
     Write-Host "Starting Consumer..."
@@ -233,6 +236,10 @@ try {
     Write-Host "Consumer finished."
 }
 finally {
+    #
+    # Stop source first, then terminate transport cleanly.
+    #
+
     Write-Host "Stopping processes..."
 
     Stop-RemoteGroup `
@@ -255,8 +262,9 @@ finally {
         "$ReceiverRunDir/receiver.pid" `
         "INT"
 
-    # Give Sender/Receiver enough time to print their final counters.
+    # Sender/Receiver print their counters after leaving their hot loops.
     Start-Sleep -Seconds 2
+
 
     $SenderAfter = @(
         "{"
