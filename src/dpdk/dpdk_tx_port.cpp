@@ -12,7 +12,7 @@ namespace
     constexpr std::uint16_t RX_QUEUE_NUMBER = 0;
     constexpr std::uint16_t TX_QUEUE_NUMBER = 1;
     constexpr std::uint16_t PRIV_SIZE = 0; // Need if we have metadata, which we don't have.
-    constexpr std::uint16_t TX_DESC_COUNT = 1024;
+    constexpr std::uint16_t TX_DESC_COUNT = 512;
     constexpr unsigned TX_MBUF_COUNT = 2047; // We need TX_MBUF_COUNT = 2^q - 1, so we take TX_DESC_COUNT(==1024) * 2 - 1
     constexpr unsigned TX_MBUF_CACHE_SIZE = 23; // We need TX_MBUF_COUNT % TX_MBUF_CACHE_SIZE == 0
     constexpr char MBUF_POOL_NAME[] = "lldt_tx_mbuf_pool";
