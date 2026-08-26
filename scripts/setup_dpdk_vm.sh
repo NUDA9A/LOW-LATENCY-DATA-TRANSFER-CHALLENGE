@@ -20,8 +20,6 @@ DPDK_DEVBIND="${ROOT}/build/dependencies/dpdk-${DPDK_VERSION}/install/bin/dpdk-d
 ISOLATED_CORES="2,4"
 HOUSEKEEPING_CORES="0,6"
 
-CLOCK_MASTER_IP="${LLDT_CLOCK_MASTER_IP:-10.129.0.17}"
-
 
 pci_bdf_from_netdev()
 {
@@ -77,16 +75,6 @@ if [[ -z "${MANAGEMENT_IF}" ]]; then
     exit 1
 fi
 
-MANAGEMENT_IP="$(
-    ip -4 -o addr show dev "${MANAGEMENT_IF}" scope global |
-        awk 'NR == 1 { split($4, address, "/"); print address[1] }'
-)"
-
-if [[ -z "${MANAGEMENT_IP}" ]]; then
-    echo "ERROR: could not determine management IPv4 address." >&2
-    exit 1
-fi
-
 MANAGEMENT_BDF="$(pci_bdf_from_netdev "${MANAGEMENT_IF}")" || {
     echo "ERROR: could not determine PCI BDF for management interface ${MANAGEMENT_IF}." >&2
     exit 1
@@ -128,7 +116,6 @@ for netdev in /sys/class/net/*; do
 done
 
 echo "Management NIC: ${MANAGEMENT_IF} (${MANAGEMENT_BDF})"
-echo "Management IP:  ${MANAGEMENT_IP}"
 
 if [[ -n "${DATAPATH_IF}" ]]; then
     echo "Datapath NIC:   ${DATAPATH_IF} (${DATAPATH_BDF})"
@@ -171,7 +158,7 @@ systemctl disable --now irqbalance 2>/dev/null || true
 
 
 # -----------------------------------------------------------------------------
-# DPDK / VFIO.
+# DPDK / igb_uio.
 # -----------------------------------------------------------------------------
 
 if [[ ! -x "${DPDK_DEVBIND}" ]]; then
@@ -179,15 +166,27 @@ if [[ ! -x "${DPDK_DEVBIND}" ]]; then
     exit 1
 fi
 
-modprobe vfio-pci
-echo 1 > /sys/module/vfio/parameters/enable_unsafe_noiommu_mode
+if ! modinfo igb_uio >/dev/null 2>&1; then
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y \
+        "linux-headers-$(uname -r)" \
+        dpdk-kmods-dkms
+fi
+
+modprobe uio
+modprobe igb_uio wc_activate=1
+
+if [[ "$(< /sys/module/igb_uio/parameters/wc_activate)" != "1" ]]; then
+    echo "ERROR: igb_uio is not running with write combining enabled." >&2
+    exit 1
+fi
 
 if [[ -n "${DATAPATH_IF}" ]]; then
     ip addr flush dev "${DATAPATH_IF}"
     ip link set "${DATAPATH_IF}" down
 fi
 
-"${DPDK_DEVBIND}" --bind=vfio-pci "${DATAPATH_BDF}"
+"${DPDK_DEVBIND}" --bind=igb_uio "${DATAPATH_BDF}"
 
 
 # -----------------------------------------------------------------------------
@@ -205,37 +204,3 @@ mountpoint -q /dev/hugepages ||
 # -----------------------------------------------------------------------------
 
 "${SCRIPT_DIR}/check_cores.sh" 2 4
-
-
-# -----------------------------------------------------------------------------
-# Benchmark clock synchronization.
-# -----------------------------------------------------------------------------
-
-if [[ ! -x "${SCRIPT_DIR}/setup_clock_sync.sh" ]]; then
-    echo "ERROR: setup_clock_sync.sh not found or not executable." >&2
-    exit 1
-fi
-
-if [[ ! -x "${SCRIPT_DIR}/check_clock_sync.sh" ]]; then
-    echo "ERROR: check_clock_sync.sh not found or not executable." >&2
-    exit 1
-fi
-
-echo
-echo "Clock master:   ${CLOCK_MASTER_IP}"
-
-if [[ "${MANAGEMENT_IP}" == "${CLOCK_MASTER_IP}" ]]; then
-    echo "Clock role:     master"
-
-    "${SCRIPT_DIR}/setup_clock_sync.sh" master
-
-    echo
-    "${SCRIPT_DIR}/check_clock_sync.sh"
-else
-    echo "Clock role:     client"
-
-    "${SCRIPT_DIR}/setup_clock_sync.sh" client "${CLOCK_MASTER_IP}"
-
-    echo
-    "${SCRIPT_DIR}/check_clock_sync.sh" "${CLOCK_MASTER_IP}"
-fi
