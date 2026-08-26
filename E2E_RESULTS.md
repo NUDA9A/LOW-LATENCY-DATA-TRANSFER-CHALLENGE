@@ -21,6 +21,7 @@ tx_drops:       0
 tx_q0_missed_tx:        0
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000032 seconds slow of NTP time
@@ -33,6 +34,7 @@ System time     : 0.000000248 seconds slow of NTP time
 Last offset     : -0.000000302 seconds
 RMS offset      : 0.000000177 seconds
 #* PHC0                          0   0   377     0   -117ns[ -419ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -67,6 +69,7 @@ latency (ns) : min=11614 mean=72211 max=234817
   p99.99     : 217300
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000003 seconds fast of NTP time
@@ -79,6 +82,7 @@ System time     : 0.000000018 seconds slow of NTP time
 Last offset     : -0.000000020 seconds
 RMS offset      : 0.000000025 seconds
 #* PHC0                          0   0   377     0   -161ns[ -181ns] +/- 5028ns
+```
 
 ### Rate 50'000, Samples 1'000'000
 ### Sender
@@ -106,6 +110,7 @@ tx_q0_bytes:    564992128
 tx_q0_missed_tx:        0
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000009 seconds slow of NTP time
@@ -118,6 +123,7 @@ System time     : 0.000000035 seconds slow of NTP time
 Last offset     : -0.000000029 seconds
 RMS offset      : 0.000000124 seconds
 #* PHC0                          0   0   377     0   -112ns[ -141ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -154,6 +160,7 @@ latency (ns) : min=11370 mean=292767 max=962830
   p99.99     : 918536
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000144 seconds fast of NTP time
@@ -166,6 +173,7 @@ System time     : 0.000000020 seconds slow of NTP time
 Last offset     : -0.000000022 seconds
 RMS offset      : 0.000000261 seconds
 #* PHC0                          0   0   377     0     -4ns[  -25ns] +/- 5028ns
+```
 
 
 ### Raw + Batching OFF — conclusion
@@ -211,10 +219,10 @@ tx_q0_bytes:    133775744
 tx_drops:       0
 tx_q0_bytes:    133775744
 tx_q0_missed_tx:        0
+Frames per data packet: 1.000000
 ```
 
-Frames per data packet: 1.000000
-
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000132 seconds fast of NTP time
@@ -227,6 +235,7 @@ System time     : 0.000000028 seconds slow of NTP time
 Last offset     : -0.000000014 seconds
 RMS offset      : 0.000000061 seconds
 #* PHC0                          0   0   377     0    -58ns[  -72ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -261,6 +270,7 @@ latency (ns) : min=12726 mean=15552 max=50331
   p99.99     : 39479
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000001 seconds fast of NTP time
@@ -273,6 +283,7 @@ System time     : 0.000000001 seconds fast of NTP time
 Last offset     : -0.000000009 seconds
 RMS offset      : 0.000000036 seconds
 #* PHC0                          0   0   377     0    -63ns[  -72ns] +/- 5028ns
+```
 
 ### Rate 50'000, Samples 1'000'000
 ### Sender
@@ -301,6 +312,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 1.799235
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000015 seconds fast of NTP time
@@ -313,6 +325,7 @@ System time     : 0.000000003 seconds slow of NTP time
 Last offset     : +0.000000004 seconds
 RMS offset      : 0.000000013 seconds
 #* PHC0                          0   0   377     0    -69ns[  -65ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -347,6 +360,7 @@ latency (ns) : min=11690 mean=35230 max=97588
   p99.99     : 82671
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000006 seconds slow of NTP time
@@ -359,6 +373,7 @@ System time     : 0.000000043 seconds fast of NTP time
 Last offset     : +0.000000028 seconds
 RMS offset      : 0.000000015 seconds
 #* PHC0                          0   0   377     0   +362ns[ +390ns] +/- 5028ns
+```
 
 ### Rate 100'000, Samples 2'000'000
 ### Sender
@@ -387,6 +402,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 2.182551
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000014 seconds fast of NTP time
@@ -399,6 +415,7 @@ System time     : 0.000000020 seconds fast of NTP time
 Last offset     : +0.000000008 seconds
 RMS offset      : 0.000000054 seconds
 #* PHC0                          0   0   377     0    +42ns[  +50ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -433,6 +450,7 @@ latency (ns) : min=11650 mean=74455 max=223376
   p99.99     : 202417
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000015 seconds slow of NTP time
@@ -445,6 +463,7 @@ System time     : 0.000000022 seconds slow of NTP time
 Last offset     : -0.000000021 seconds
 RMS offset      : 0.000000015 seconds
 #* PHC0                          0   0   377     0   -183ns[ -204ns] +/- 5028ns
+```
 
 ### Rate 200'000, Samples 10'000'000
 ### Sender
@@ -473,6 +492,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 2.443852
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000027 seconds slow of NTP time
@@ -485,6 +505,7 @@ System time     : 0.000000027 seconds fast of NTP time
 Last offset     : +0.000000017 seconds
 RMS offset      : 0.000000033 seconds
 #* PHC0                          0   0   377     0   +150ns[ +167ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -519,6 +540,7 @@ latency (ns) : min=11115 mean=193352 max=619078
   p99.99     : 494352
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000008 seconds fast of NTP time
@@ -531,6 +553,7 @@ System time     : 0.000000013 seconds slow of NTP time
 Last offset     : +0.000000005 seconds
 RMS offset      : 0.000000051 seconds
 #* PHC0                          0   0   377     0    +27ns[  +32ns] +/- 5028ns
+```
 
 ### Rate 400'000, Samples 4'000'000
 ### Sender
@@ -559,6 +582,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 2.689211
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000015 seconds slow of NTP time
@@ -571,6 +595,7 @@ System time     : 0.000000020 seconds fast of NTP time
 Last offset     : +0.000000023 seconds
 RMS offset      : 0.000000048 seconds
 #* PHC0                          0   0   377     0   +173ns[ +196ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -605,6 +630,7 @@ latency (ns) : min=10748 mean=291873 max=637455
   p99.99     : 620321
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000002 seconds fast of NTP time
@@ -617,6 +643,7 @@ System time     : 0.000000004 seconds fast of NTP time
 Last offset     : +0.000000012 seconds
 RMS offset      : 0.000000031 seconds
 #* PHC0                          0   0   377     0    +79ns[  +90ns] +/- 5028ns
+```
 
 ### Raw + Batching ON — conclusion
 
@@ -673,6 +700,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 1.000000
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000029 seconds fast of NTP time
@@ -685,6 +713,7 @@ System time     : 0.000000007 seconds fast of NTP time
 Last offset     : -0.000000000 seconds
 RMS offset      : 0.000000023 seconds
 #* PHC0                          0   0   377     0     -1ns[   -1ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -719,6 +748,7 @@ latency (ns) : min=11767 mean=209542 max=464711
   p99.99     : 461882
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000002 seconds fast of NTP time
@@ -731,6 +761,7 @@ System time     : 0.000000038 seconds fast of NTP time
 Last offset     : +0.000000029 seconds
 RMS offset      : 0.000000015 seconds
 #* PHC0                          0   0   377     0   +391ns[ +420ns] +/- 5028ns
+```
 
 ### Rate 50'000, Samples 1'000'000
 ### Sender
@@ -759,6 +790,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 1.000000
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000031 seconds slow of NTP time
@@ -771,6 +803,7 @@ System time     : 0.000000016 seconds slow of NTP time
 Last offset     : +0.000000007 seconds
 RMS offset      : 0.000000051 seconds
 #* PHC0                          0   0   377     0    +64ns[  +71ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -805,6 +838,7 @@ latency (ns) : min=11166 mean=326438 max=813020
   p99.99     : 793407
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000010 seconds fast of NTP time
@@ -817,6 +851,7 @@ System time     : 0.000000041 seconds fast of NTP time
 Last offset     : +0.000000043 seconds
 RMS offset      : 0.000000020 seconds
 #* PHC0                          0   0   377     0   +231ns[ +273ns] +/- 5028ns
+```
 
 ### Compact + Batching OFF — conclusion
 
@@ -862,6 +897,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 4.761243
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000002 seconds slow of NTP time
@@ -874,6 +910,7 @@ System time     : 0.000000006 seconds slow of NTP time
 Last offset     : +0.000000005 seconds
 RMS offset      : 0.000000010 seconds
 #* PHC0                          0   0   377     0   +155ns[ +160ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -908,6 +945,7 @@ latency (ns) : min=11816 mean=28525 max=68556
   p99.99     : 65919
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000012 seconds fast of NTP time
@@ -920,6 +958,7 @@ System time     : 0.000000019 seconds fast of NTP time
 Last offset     : -0.000000000 seconds
 RMS offset      : 0.000000042 seconds
 #* PHC0                          0   0   377     0     -3ns[   -3ns] +/- 5028ns
+```
 
 ### Rate 50'000, Samples 1'000'000
 ### Sender
@@ -948,6 +987,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 5.060483
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000026 seconds slow of NTP time
@@ -960,6 +1000,7 @@ System time     : 0.000000035 seconds fast of NTP time
 Last offset     : +0.000000026 seconds
 RMS offset      : 0.000000030 seconds
 #* PHC0                          0   0   377     0   +258ns[ +284ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -994,6 +1035,7 @@ latency (ns) : min=11066 mean=27754 max=96408
   p99.99     : 90419
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000116 seconds fast of NTP time
@@ -1006,6 +1048,7 @@ System time     : 0.000000039 seconds fast of NTP time
 Last offset     : +0.000000279 seconds
 RMS offset      : 0.000000187 seconds
 #* PHC0                          0   0   377     0    -25ns[ +254ns] +/- 5028ns
+```
 
 ### Rate 100'000, Samples 2'000'000
 ### Sender
@@ -1034,6 +1077,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 5.220487
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000015 seconds fast of NTP time
@@ -1046,6 +1090,7 @@ System time     : 0.000000011 seconds slow of NTP time
 Last offset     : +0.000000006 seconds
 RMS offset      : 0.000000016 seconds
 #* PHC0                          0   0   377     0   +378ns[ +405ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -1080,6 +1125,7 @@ latency (ns) : min=11198 mean=28400 max=115119
   p99.99     : 111400
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000102 seconds fast of NTP time
@@ -1092,6 +1138,7 @@ System time     : 0.000000066 seconds slow of NTP time
 Last offset     : -0.000000115 seconds
 RMS offset      : 0.000000161 seconds
 #* PHC0                          0   0   377     0   -212ns[ -326ns] +/- 5028ns
+```
 
 ### Rate 200'000, Samples 10'000'000
 ### Sender
@@ -1120,6 +1167,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 5.745780
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000012 seconds fast of NTP time
@@ -1132,6 +1180,7 @@ System time     : 0.000000023 seconds slow of NTP time
 Last offset     : -0.000000008 seconds
 RMS offset      : 0.000000099 seconds
 #* PHC0                          0   0   377     0    -56ns[  -63ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -1166,6 +1215,7 @@ latency (ns) : min=10126 mean=28204 max=105988
   p99.99     : 81929
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000051 seconds fast of NTP time
@@ -1178,6 +1228,7 @@ System time     : 0.000000133 seconds slow of NTP time
 Last offset     : -0.000000213 seconds
 RMS offset      : 0.000000192 seconds
 #* PHC0                          0   0   377     0    -22ns[ -235ns] +/- 5028ns
+```
 
 ### Rate 400'000, Samples 4'000'000
 ### Sender
@@ -1206,6 +1257,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 6.648021
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000016 seconds slow of NTP time
@@ -1218,6 +1270,7 @@ System time     : 0.000000030 seconds fast of NTP time
 Last offset     : +0.000000030 seconds
 RMS offset      : 0.000000015 seconds
 #* PHC0                          0   0   377     0   +362ns[ +392ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -1252,6 +1305,7 @@ latency (ns) : min=13294 mean=28901 max=69033771
   p99.99     : 70817
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000036 seconds slow of NTP time
@@ -1264,6 +1318,7 @@ System time     : 0.000000001 seconds slow of NTP time
 Last offset     : -0.000000003 seconds
 RMS offset      : 0.000000187 seconds
 #* PHC0                          0   0   377     0     +5ns[   +3ns] +/- 5028ns
+```
 
 ### Rate 800'000, Samples 8'000'000
 ### Sender
@@ -1292,6 +1347,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 6.396272
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000005 seconds fast of NTP time
@@ -1304,6 +1360,7 @@ System time     : 0.000000019 seconds slow of NTP time
 Last offset     : -0.000000008 seconds
 RMS offset      : 0.000000023 seconds
 #* PHC0                          0   0   377     0    -88ns[  -96ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -1338,6 +1395,7 @@ latency (ns) : min=13512 mean=31761 max=75032131
   p99.99     : 101949
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000218 seconds slow of NTP time
@@ -1350,6 +1408,7 @@ System time     : 0.000000028 seconds fast of NTP time
 Last offset     : -0.000000014 seconds
 RMS offset      : 0.000000119 seconds
 #* PHC0                          0   0   377     0    -38ns[  -53ns] +/- 5028ns
+```
 
 ### Rate 1'600'000, Samples 16'000'000
 ### Sender
@@ -1378,6 +1437,7 @@ tx_q0_missed_tx:        0
 Frames per data packet: 6.196509
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000012 seconds fast of NTP time
@@ -1390,6 +1450,7 @@ System time     : 0.000000033 seconds fast of NTP time
 Last offset     : +0.000000041 seconds
 RMS offset      : 0.000000036 seconds
 #* PHC0                          0   0   377     0   +126ns[ +167ns] +/- 5030ns
+```
 
 ### Receiver
 ```text
@@ -1424,6 +1485,7 @@ latency (ns) : min=13546 mean=32107 max=81039369
   p99.99     : 148284
 ```
 
+```text
 === before ===
 Reference ID    : 50484330 (PHC0)
 System time     : 0.000000018 seconds fast of NTP time
@@ -1436,6 +1498,7 @@ System time     : 0.000000008 seconds slow of NTP time
 Last offset     : -0.000000005 seconds
 RMS offset      : 0.000000028 seconds
 #* PHC0                          0   0   377     0    -43ns[  -48ns] +/- 5028ns
+```
 
 ### Compact + Batching ON — conclusion
 

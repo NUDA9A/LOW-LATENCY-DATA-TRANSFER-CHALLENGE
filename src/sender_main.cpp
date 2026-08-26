@@ -18,10 +18,13 @@
 #include <csignal>
 #include <cerrno>
 #include <vector>
+#include <array>
 
 
 namespace
 {
+    constexpr std::uint16_t TX_BURST_CAPACITY = 4;
+
     volatile std::sig_atomic_t stop_requested{};
 
     void handle_signal(int)
@@ -53,7 +56,7 @@ namespace
         std::fprintf(stdout, "Source frames missing:\t%lu\n\n", counters.source_frames_missing);
     }
 
-    void printDataCounters(const SenderDataCounters& counters)
+    void printDataCounters(const SenderDataCounters& counters, const std::uint64_t tx_burst_calls)
     {
         std::fprintf(stdout, "SenderDataCounters:\n");
         std::fprintf(stdout, "Frames offered to packetization:\t%lu\n", counters.frames_offered_to_packetization);
@@ -63,7 +66,8 @@ namespace
         std::fprintf(stdout, "Data payload bytes:\t%lu\n", counters.data_payload_bytes);
         std::fprintf(stdout, "Data sequences consumed:\t%lu\n", counters.data_sequences_consumed);
         std::fprintf(stdout, "Tx packets enqueued:\t%lu\n", counters.tx_packets_enqueued);
-        std::fprintf(stdout, "Tx packets unsent:\t%lu\n\n", counters.tx_packets_unsent);
+        std::fprintf(stdout, "Tx packets unsent:\t%lu\n", counters.tx_packets_unsent);
+        std::fprintf(stdout, "Tx burst calls:\t%lu\n\n", tx_burst_calls);
     }
 
     void printRteStats(const rte_eth_stats& counters)
@@ -132,6 +136,26 @@ namespace
 
         bool stopping = false;
 
+        std::array<rte_mbuf*, TX_BURST_CAPACITY> burst_buf{};
+        std::uint16_t tx_burst_size{};
+        std::uint64_t tx_burst_calls{};
+
+        const auto flush = [&]()
+        {
+            if (tx_burst_size > 0)
+            {
+                std::uint16_t sent = rte_eth_tx_burst(dpdk_port_info->port_id, dpdk::DpdkTxPort::TX_QUEUE_ID, burst_buf.data(), tx_burst_size);
+                for (std::size_t i = sent; i < tx_burst_size; ++i)
+                {
+                    rte_pktmbuf_free(burst_buf[i]);
+                }
+                data_counters.tx_packets_enqueued += sent;
+                data_counters.tx_packets_unsent += tx_burst_size - sent;
+                tx_burst_size = 0;
+                ++tx_burst_calls;
+            }
+        };
+
         while (true)
         {
             if (stop_requested)
@@ -141,6 +165,7 @@ namespace
 
             if (stopping && !carry_frame.has_value())
             {
+                flush();
                 break;
             }
 
@@ -164,6 +189,7 @@ namespace
             if (!mbuf)
             {
                 data_counters.mbuf_alloc_failures++;
+                flush();
                 continue;
             }
 
@@ -171,6 +197,7 @@ namespace
             if (!canonical_output)
             {
                 rte_pktmbuf_free(mbuf);
+                flush();
                 std::fprintf(stderr, "[ERROR]: Could not reserve data packet.\n");
                 err = 1;
                 break;
@@ -225,19 +252,47 @@ namespace
             data_counters.data_sequences_consumed++;
             next_data_seq++;
 
-            if (rte_eth_tx_burst(dpdk_port_info->port_id, dpdk::DpdkTxPort::TX_QUEUE_ID, &mbuf, 1) == 0)
+            burst_buf[tx_burst_size++] = mbuf;
+
+            if (tx_burst_size == TX_BURST_CAPACITY)
             {
-                data_counters.tx_packets_unsent++;
-                rte_pktmbuf_free(mbuf);
+                flush();
                 continue;
             }
-            data_counters.tx_packets_enqueued++;
+
+            if (carry_frame)
+            {
+                continue;
+            }
+
+            if (batching_enabled)
+            {
+                flush();
+                continue;
+            }
+
+            if (stop_requested)
+            {
+                stopping = true;
+                flush();
+                continue;
+            }
+
+            const auto next = reader.try_read();
+            if (next.status != transport::SenderShmReaderStatus::Ok)
+            {
+                flush();
+                continue;
+            }
+
+            carry_frame = next.frame_view;
+            data_counters.frames_offered_to_packetization++;
         }
 
         rte_eth_stats rte_stats{};
 
         printInputCounters(reader.get_counters());
-        printDataCounters(data_counters);
+        printDataCounters(data_counters, tx_burst_calls);
 
         if (rte_eth_stats_get(dpdk_port_info->port_id, &rte_stats) == 0)
         {
